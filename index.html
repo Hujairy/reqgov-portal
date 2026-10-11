@@ -391,7 +391,8 @@ function nowStamp(){ const d = new Date(); return `${TODAY}T${String(d.getHours(
 const getBcr = id => DB.bcrs.find(b => b.id === id);
 const isOpen = b => b.gate < 7;
 const daysAtGate = b => workdays(b.since, TODAY);
-const isBreach = b => isOpen(b) && b.gate >= 1 && daysAtGate(b) > GATES[b.gate].sla;
+const slaOf = g => (DB && DB.sla && DB.sla[g] != null) ? DB.sla[g] : GATES[g].sla;
+const isBreach = b => isOpen(b) && b.gate >= 1 && daysAtGate(b) > slaOf(b.gate);
 const statusOf = b => b.returned ? `Returned at ${GATES[b.gate].code}` : STATUS_AT[b.gate];
 
 function pill(text, kind=''){ return `<span class="pill ${kind}">${esc(text)}</span>`; }
@@ -405,7 +406,7 @@ function exceptions(){
   const out = [];
   DB.bcrs.forEach(b => {
     if (!isOpen(b)) return;
-    if (isBreach(b)) out.push({sev:'Medium', rule:'Level SLA', bcr:b.id, txt:`${GATES[b.gate].code} ${GATES[b.gate].name}: ${daysAtGate(b)} working days against a ${GATES[b.gate].sla}-day SLA`});
+    if (isBreach(b)) out.push({sev:'Medium', rule:'Level SLA', bcr:b.id, txt:`${GATES[b.gate].code} ${GATES[b.gate].name}: ${daysAtGate(b)} working days against a ${slaOf(b.gate)}-day SLA`});
     b.brs.filter(r => r.status === 'Baselined').forEach(r => {
       if (!r.frs.length) out.push({sev:'Medium', rule:'BR coverage', bcr:b.id, txt:`${r.id} has no functional requirement`});
       if (!r.tcs.length) out.push({sev:'High', rule:'Test coverage', bcr:b.id, txt:`${r.id} has no test case`});
@@ -731,7 +732,7 @@ function vDetail(){
   const tcsAll = b.brs.flatMap(r => r.tcs);
   const steps = GATES.map(g => {
     const cls = g.g < b.gate ? 'done' : g.g === b.gate ? 'current' + (isBreach(b)?' breach':'') : '';
-    const st = g.g < b.gate ? 'Approved' : g.g === b.gate ? `${daysAtGate(b)} of ${g.sla} days` : 'Not started';
+    const st = g.g < b.gate ? 'Approved' : g.g === b.gate ? `${daysAtGate(b)} of ${slaOf(g.g)} days` : 'Not started';
     return `<li class="${cls}"><span class="code">${g.code}</span><span class="nm">${g.name}</span><span class="st">${st}</span></li>`;
   }).join('');
   const hist = DB.audit.filter(a => a.rec.startsWith(b.id));
@@ -804,6 +805,7 @@ function saReviewers(sa){
 }
 function normalize(db){
   DB = db; if (!db.lists) db.lists = buildLists();
+  if (!db.sla) db.sla = Object.fromEntries(GATES.filter(g => g.g >= 1).map(g => [g.g, g.sla]));
   db.bcrs.forEach(b => {
     b.brs.forEach(r => r.tcs.forEach(t => Object.assign(t, {ds:t.ds || 'Approved', type:t.type || 'SIT', author:t.author || 'Omar Saleh', on:t.on || (t.by ? '2026-10-08' : null), defect:t.defect || ''})));
     b.tcSeq = maxNum(b.brs.flatMap(r => r.tcs.map(t => t.id)));
@@ -1298,7 +1300,7 @@ function vApprovals(){
   <div class="tbl-wrap"><table><thead><tr><th>Level</th><th>Request</th><th>Approvers</th><th>Waiting</th><th>SLA</th><th></th></tr></thead><tbody>
   ${q.map(b => { const g = GATES[b.gate]; const d = daysAtGate(b);
     return `<tr><td><span class="mono">${g.code}</span><br><b>${g.name}</b></td><td><span class="idref">${b.id}</span><br>${esc(b.title)}</td><td style="max-width:260px">${esc(g.who)}</td>
-    <td class="num">${d} working day${d===1?'':'s'}</td><td>${isBreach(b) ? pill(`Breached (${g.sla}d)`, 'crit') : pill(`${g.sla - d} day${g.sla-d===1?'':'s'} left`, 'good')}</td>
+    <td class="num">${d} working day${d===1?'':'s'}</td><td>${isBreach(b) ? pill(`Breached (${slaOf(g.g)}d)`, 'crit') : pill(`${slaOf(g.g) - d} day${slaOf(g.g)-d===1?'':'s'} left`, 'good')}</td>
     <td><button class="btn" type="button" data-act="open" data-id="${b.id}">Review</button></td></tr>`; }).join('')}
   </tbody></table></div></section>`;
 }
@@ -1347,8 +1349,26 @@ function renameValue(key, from, to){
 function adminError(t){ state.adminMsg = {ok:false, text:t}; render(); }
 function adminDone(t){ state.adminMsg = {ok:true, text:t}; toast(t); render(); }
 
+function slaEditor(){
+  const m = state.adminMsg;
+  const rows = GATES.filter(g => g.g >= 1).map(g => {
+    const waiting = DB.bcrs.filter(b => isOpen(b) && b.gate === g.g), breached = waiting.filter(isBreach).length;
+    return `<tr><td class="mono">${g.code}</td><td><b>${esc(g.name)}</b><br><span class="muted" style="font-size:.8rem">${esc(g.who)}</span></td>
+      <td style="min-width:130px"><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="90" step="1" id="adm-sla-${g.g}" data-adm="sla" data-g="${g.g}" value="${slaOf(g.g)}" aria-label="SLA for ${g.code} in working days" style="width:80px"><span class="muted">days</span></div></td>
+      <td class="num">${waiting.length}</td><td>${breached ? pill(`${breached} breached`, 'crit') : pill('Within SLA', 'good')}</td></tr>`; }).join('');
+  return `<section class="panel" style="display:grid;gap:14px;align-content:start">
+    <header style="margin:0;display:block"><h2>Level SLAs</h2><p class="muted" style="font-size:.85rem;margin-top:4px">How long each level may wait for its decision before it counts as breached. SLAs count working days, Sunday to Thursday. Changes apply immediately to the pipeline, approvals and exception reports.</p></header>
+    ${m ? `<div class="msg ${m.ok ? 'ok' : 'err'}" role="status">${esc(m.text)}</div>` : ''}
+    <div class="tbl-wrap"><table><thead><tr><th>Level</th><th>Decision</th><th>SLA (working days)</th><th>Waiting now</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="muted" style="font-size:.82rem">L0 submission check runs automatically and has no SLA.</p></section>`;
+}
+
 function vAdmin(){
-  const keys = Object.keys(DB.lists), key = state.adminList && DB.lists[state.adminList] ? state.adminList : keys[0], list = DB.lists[key];
+  const keys = Object.keys(DB.lists), isSla = state.adminList === '_sla';
+  const key = state.adminList && DB.lists[state.adminList] ? state.adminList : keys[0], list = DB.lists[key];
+  const navSla = `<button type="button" data-act="admlist" data-key="_sla" ${isSla ? 'aria-current="true"' : ''}><span>Level SLAs</span><span class="muted">${GATES.length - 1}</span></button>`;
+  if (isSla) return `<div class="pagehead"><div><h1>Admin</h1><p class="muted">Customise level SLAs and the values offered in every dropdown. Every change is written to the audit log.</p></div></div>
+  <div class="admin"><nav class="adminnav" aria-label="Settings">${navSla}<span class="label" style="padding:10px 10px 4px">Dropdown lists</span>${keys.map(k => `<button type="button" data-act="admlist" data-key="${k}"><span>${esc(DB.lists[k].label)}</span><span class="muted">${DB.lists[k].values.length}</span></button>`).join('')}</nav>${slaEditor()}</div>`;
   const m = state.adminMsg;
   const attrHead = {owner:'System Owner', oprisk:'Operational Risk review', route:'Approval route'}[list.attr];
   const attrCell = (x, i) => list.attr === 'owner' ? `<input id="adm-o-${i}" data-adm="owner" data-i="${i}" value="${esc(x.owner || '')}" aria-label="System Owner for ${esc(x.v)}">`
@@ -1357,9 +1377,9 @@ function vAdmin(){
   const newAttr = list.attr === 'owner' ? fld('adm-new-o', 'System Owner', '<input id="adm-new-o" placeholder="Name">')
     : list.attr === 'oprisk' ? `<label style="display:flex;gap:6px;align-items:center;align-self:end;padding-bottom:8px"><input type="checkbox" id="adm-new-r"> Operational Risk review</label>`
     : list.attr === 'route' ? fld('adm-new-t', 'Approval route', `<select id="adm-new-t">${Object.entries(ROUTES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>`) : '';
-  return `<div class="pagehead"><div><h1>Admin</h1><p class="muted">Customise the values offered in every dropdown. Renaming a value updates every record that uses it. A value in use cannot be removed. Every change is written to the audit log.</p></div></div>
+  return `<div class="pagehead"><div><h1>Admin</h1><p class="muted">Customise level SLAs and the values offered in every dropdown. Renaming a value updates every record that uses it. A value in use cannot be removed. Every change is written to the audit log.</p></div></div>
   <div class="admin">
-    <nav class="adminnav" aria-label="Dropdown lists">${keys.map(k => `<button type="button" data-act="admlist" data-key="${k}" ${k === key ? 'aria-current="true"' : ''}><span>${esc(DB.lists[k].label)}</span><span class="muted">${DB.lists[k].values.length}</span></button>`).join('')}</nav>
+    <nav class="adminnav" aria-label="Settings">${navSla}<span class="label" style="padding:10px 10px 4px">Dropdown lists</span>${keys.map(k => `<button type="button" data-act="admlist" data-key="${k}" ${k === key ? 'aria-current="true"' : ''}><span>${esc(DB.lists[k].label)}</span><span class="muted">${DB.lists[k].values.length}</span></button>`).join('')}</nav>
     <section class="panel" style="display:grid;gap:14px;align-content:start">
       <header style="margin:0;display:block"><h2>${esc(list.label)}</h2><p class="muted" style="font-size:.85rem;margin-top:4px">Used in: ${esc(list.where)}</p></header>
       ${m ? `<div class="msg ${m.ok ? 'ok' : 'err'}" role="status">${esc(m.text)}</div>` : ''}
@@ -1382,6 +1402,13 @@ function vAdmin(){
   </div>`;
 }
 function adminChange(el){
+  if (el.dataset.adm === 'sla'){
+    const g = Number(el.dataset.g), n = Number(el.value), gate = GATES[g], from = slaOf(g);
+    if (!Number.isInteger(n) || n < 1 || n > 90) return adminError('Enter a whole number of working days from 1 to 90.');
+    if (n === from) return;
+    DB.sla[g] = n; log(ADMIN_USER, 'SLA changed', 'Admin / Level SLAs', `${gate.code} ${gate.name}: ${from} → ${n} working days`);
+    return adminDone(`${gate.code} SLA set to ${n} working days`);
+  }
   const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], i = Number(el.dataset.i), x = list.values[i], rec = `Admin / ${list.label}`;
   if (el.dataset.adm === 'rename'){
     const to = el.value.trim(), from = x.v;
@@ -1438,7 +1465,7 @@ function vFramework(){
   <section class="ref-levels">${L.map(l => `<article class="lvl"><span class="n">${l[0]} · list: ${esc(l[2])}</span><h3>${esc(l[1])}</h3><p>${esc(l[3])}</p><div class="fields"><span class="label">Fields</span><br>${esc(l[4])}</div></article>`).join('')}</section>
   <section class="panel"><header><h2>Level approval matrix</h2><span class="muted" style="font-size:.8rem">SLAs in working days, Sunday–Thursday</span></header>
   <div class="tbl-wrap"><table><thead><tr><th>Level</th><th>Decision</th><th>Approvers</th><th>SLA</th></tr></thead><tbody>
-  ${GATES.map(g => `<tr><td class="mono">${g.code}</td><td><b>${g.name}</b></td><td>${esc(g.who)}</td><td class="num">${g.sla ? g.sla+' days' : 'Immediate'}</td></tr>`).join('')}
+  ${GATES.map(g => `<tr><td class="mono">${g.code}</td><td><b>${g.name}</b></td><td>${esc(g.who)}</td><td class="num">${slaOf(g.g) ? slaOf(g.g)+' days' : 'Immediate'}</td></tr>`).join('')}
   </tbody></table></div></section>
   <section class="panel"><header><h2>Controls in this prototype</h2></header>
     <ul style="margin:0;padding-left:18px;display:grid;gap:6px;max-width:75ch">
