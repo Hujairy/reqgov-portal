@@ -232,7 +232,7 @@ const GATES = [
   {g:1, code:'G1', name:'BCR approval', sla:5, who:'Business Sponsor, then Demand Manager'},
   {g:2, code:'G2', name:'FR approval', sla:5, who:'System Owner approves each FR; Lead BA confirms'},
   {g:3, code:'G3', name:'BR approval & baseline', sla:5, who:'Business Owner approves each BR; Lead BA baselines'},
-  {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, Information Security, Risk'},
+  {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, InfoSec and Risk approve the SA; ARB chair confirms'},
   {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'Business Owner (not a test executor)'},
   {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager and CAB'}
 ];
@@ -336,7 +336,7 @@ const SEED = {
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));
-let DB = clone(SEED);
+let DB;
 let state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''};
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -444,7 +444,8 @@ function criteria(b){
   if (g === 2){ c.push({ok:b.brs.length > 0, t:'At least one business requirement'});
     b.brs.forEach(r => c.push({ok:r.frs.length > 0 && r.frs.every(f => OK_FR.includes(f.st)), t:`${r.id}: ${r.frs.filter(f => OK_FR.includes(f.st)).length} of ${r.frs.length} FRs approved`})); }
   if (g === 3) b.brs.forEach(r => c.push({ok:OK_BR.includes(r.status), t:`${r.id} approved by its Business Owner`}));
-  if (g === 4) c.push({ok:!!b.sa, t:'Solution assessment submitted'}, {ok:b.brs.every(r=>r.frs.length), t:'All BRs decomposed into FRs'});
+  if (g === 4){ c.push({ok:!!b.sa, t:'Solution assessment recorded'}); if (b.sa) b.sa.approvals.forEach(ap => c.push({ok:SA_DONE.includes(ap.st), t:`${ap.role}: ${ap.st}`}));
+    c.push({ok:!!b.sa && b.sa.status === 'Approved', t:'Solution assessment approved by every reviewer'}, {ok:b.brs.every(r=>r.frs.length), t:'All BRs decomposed into FRs'}); }
   if (g === 5){ b.brs.forEach(r => c.push({ok:r.tcs.length > 0, t:`${r.id} has test coverage`}));
     const all = b.brs.flatMap(r=>r.tcs); c.push({ok:all.length && all.every(t=>t.r==='Pass'), t:`All test cases pass (${all.filter(t=>t.r==='Pass').length} of ${all.length})`}); }
   if (g === 6) c.push({ok:!!(b.uat && b.uat.status==='Signed Off'), t:'UAT signed off'}, {ok:!!b.chg, t:'Change request raised with rollback plan'});
@@ -452,7 +453,7 @@ function criteria(b){
 }
 function approverOptions(b){
   const owner = b.brs[0]?.owner || b.sponsor;
-  const map = {1:[b.sponsor, PEOPLE.demand], 2:[PEOPLE.ba], 3:[PEOPLE.ba], 4:[PEOPLE.arb, PEOPLE.infosec], 5:[owner], 6:[PEOPLE.chg]};
+  const map = {1:[b.sponsor, PEOPLE.demand], 2:[PEOPLE.ba], 3:[PEOPLE.ba], 4:[PEOPLE.arb], 5:[owner], 6:[PEOPLE.chg]};
   const list = [...(map[b.gate]||[])];
   [b.requestor, PEOPLE.qa].forEach(p => { if (!list.includes(p)) list.push(p); });
   return {expected: map[b.gate]||[], list};
@@ -629,7 +630,7 @@ function saveEdit(){
 }
 
 function reqForm(b){
-  const f = state.form; if (!f) return '';
+  const f = state.form; if (!f || String(f.kind).startsWith('sa-')) return '';
   if (f.kind === 'rfr' || f.kind === 'rbr') return reviewForm(b);
   if (f.kind === 'vfr' || f.kind === 'vbr') return viewPanel(b);
   if (f.kind === 'efr' || f.kind === 'ebr') return editForm(b);
@@ -740,32 +741,174 @@ function vDetail(){
     ${decision}
   </div>
   <div class="three">
-    <section class="card"><div class="label">Level 4 · Solution assessment</div>${b.sa ? `<h3><span class="idref">${b.sa.id}</span> ${pill(b.sa.status, b.sa.status==='Approved'?'good':'accent')}</h3>
-      ${kv({'Vendor':esc(b.sa.vendor),'Approach':esc(b.sa.approach),'Risk rating':pill(b.sa.risk, priKind(b.sa.risk)),'Effort':b.sa.effort+' person-days','Architecture':esc(b.sa.arch),'InfoSec':esc(b.sa.sec)})}` : '<p class="empty">Not started. Raised after the BRs are baselined.</p>'}</section>
+    ${saCard(b)}
     <section class="card"><div class="label">Level 5 · UAT sign-off</div>${b.uat ? `<h3><span class="idref">${b.uat.id}</span> ${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'accent')}</h3>
       ${kv({'Business owner':esc(b.uat.owner),'Result':esc(b.uat.result),'Sign-off date':fmtDate(b.uat.date),'Tests passed':`${tcsAll.filter(t=>t.r==='Pass').length} of ${tcsAll.length}`})}` : '<p class="empty">Not started. Opened when testing begins.</p>'}</section>
     <section class="card"><div class="label">Level 6 · Change request</div>${b.chg ? `<h3><span class="idref">${b.chg.id}</span> ${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'accent')}</h3>
       ${kv({'Change type':esc(b.chg.type),'Risk level':pill(b.chg.risk, priKind(b.chg.risk)),'CAB approval':esc(b.chg.cab),'Planned release':fmtDate(b.chg.release),'PIR':esc(b.chg.pir)})}` : '<p class="empty">Created automatically when UAT is signed off.</p>'}</section>
   </div>
+  ${saForm(b)}
   <section class="panel"><header><h2>Record history</h2><span class="muted" style="font-size:.8rem">From the Gate Decisions Log and item versions</span></header>
     ${hist.length ? `<ul class="timeline">${hist.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br><span class="trace">${esc(a.rec)}</span> · ${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty">No entries yet.</p>'}
   </section>`;
 }
 
+/* ---------- Level 4: solution assessment ---------- */
+const SA_AUTHOR = 'Rashid Isa';
+const SA_TYPES = ['Configuration','In-house Development','Vendor Package','Integration','Hybrid'];
+const SA_DONE = ['Approved','Approved with Conditions'];
+function saReviewers(sa){
+  const r = [{role:'Enterprise Architecture (ARB)', who:PEOPLE.arb}, {role:'Information Security', who:PEOPLE.infosec}];
+  if (sa.vendor !== 'None') r.push({role:'Third-Party Risk', who:'Dana Mattar'});
+  if (sa.risk === 'High' || sa.risk === 'Critical') r.push({role:'Operational Risk', who:'Fadhel Mahdi'});
+  return r;
+}
+function normalize(db){
+  db.bcrs.forEach(b => {
+    b.saSeq = b.sa ? 1 : 0;
+    const sa = b.sa; if (!sa || sa.approvals) return;
+    sa.systems = sa.systems || [...b.systems]; sa.author = SA_AUTHOR;
+    const a = (sa.approach || '').toLowerCase();
+    sa.atype = a.includes('vendor package') ? 'Vendor Package' : a.includes('configuration and') ? 'Hybrid' : a.startsWith('configuration') ? 'Configuration' : a.includes('integration') ? 'Integration' : 'Hybrid';
+    if (sa.status === 'Under ARB Review') sa.status = 'Submitted';
+    const done = sa.status === 'Approved';
+    sa.approvals = saReviewers(sa).map(r => ({...r, st: done ? (r.role.startsWith('Enterprise') && sa.arch === 'Approved with Conditions' ? 'Approved with Conditions' : 'Approved') : 'Pending', note:''}));
+  });
+  return db;
+}
+const saCanChange = b => isOpen(b) && b.gate >= 2 && b.gate <= 4;
+
+function saCard(b){
+  const sa = b.sa, busy = state.form && String(state.form.kind).startsWith('sa-');
+  const head = '<div class="label">Level 4 · Solution assessment</div>';
+  if (!sa) return `<section class="card">${head}<p class="empty">${saCanChange(b) ? 'No assessment yet. It must be approved before G4.' : b.gate < 2 ? 'Raised once the BCR is approved at G1.' : 'No assessment recorded.'}</p>
+    ${saCanChange(b) && !busy ? '<button class="btn" type="button" data-act="sa" data-kind="sa-add" style="justify-self:start">+ Add solution assessment</button>' : ''}</section>`;
+  const kind = sa.status === 'Approved' ? 'good' : sa.status === 'Rejected' ? 'crit' : sa.status === 'Draft' ? '' : 'accent';
+  const btns = [];
+  if (saCanChange(b) && !busy){
+    btns.push(`<button class="btn small" type="button" data-act="sa" data-kind="sa-edit">Edit</button>`);
+    if (sa.status === 'Draft' || sa.status === 'Rejected') btns.push(`<button class="btn small primary" type="button" data-act="sasubmit">Submit for approval</button>`, `<button class="btn small danger" type="button" data-act="sa" data-kind="sa-delete">Delete</button>`);
+  }
+  return `<section class="card">${head}<h3><span class="idref">${b.id} / ${sa.id}</span> ${pill(sa.status, kind)}</h3>
+    <div class="kv"><span>Vendor</span><span>${esc(sa.vendor)}${sa.vname ? ' · ' + esc(sa.vname) : ''}</span><span>Approach</span><span>${esc(sa.atype)}${sa.approach ? '<br><span class="muted">' + esc(sa.approach) + '</span>' : ''}</span>
+      <span>Risk rating</span><span>${pill(sa.risk, priKind(sa.risk))}</span><span>Effort</span><span>${sa.effort} person-days</span><span>Systems</span><span>${sa.systems.map(esc).join(', ')}</span>
+      <span>Architecture</span><span>${esc(sa.arch)}</span><span>InfoSec</span><span>${esc(sa.sec)}</span><span>Version</span><span>${sa.ver || 1}</span></div>
+    ${sa.status !== 'Draft' ? `<div style="display:grid;gap:6px"><div class="label">Approvals (all required)</div>
+      ${sa.approvals.map((ap, i) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.83rem"><span style="flex:1 1 140px;min-width:0">${esc(ap.role)}<br><span class="muted">${esc(ap.who)}</span></span>${pill(ap.st, SA_DONE.includes(ap.st) ? 'good' : ap.st === 'Rejected' ? 'crit' : '')}
+        ${ap.st === 'Pending' && sa.status === 'Submitted' && isOpen(b) && !busy ? `<button class="btn link small" type="button" data-act="sa" data-kind="sa-review" data-role="${i}">Review</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="font-size:.82rem">Draft. Submit it to send it to ARB, InfoSec and any risk reviewers.</p>'}
+    ${btns.length ? `<div class="actions">${btns.join('')}</div>` : ''}</section>`;
+}
+
+function saForm(b){
+  const f = state.form; if (!f || !String(f.kind).startsWith('sa-')) return '';
+  const err = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
+  const cancel = '<button class="btn" type="button" data-act="cancelform">Cancel</button>';
+  const sa = b.sa;
+  if (f.kind === 'sa-delete') return `<section class="panel" id="saform" style="border-color:var(--crit);display:grid;gap:12px">
+    <h2>Delete ${b.id} / ${sa.id}?</h2><p>The assessment is moved to the site recycle bin and removed from this BCR. The deletion is kept in the audit log, and the next assessment gets a new ID.</p>
+    <div class="field" style="max-width:520px"><label for="sa-delnote">Reason for deletion</label><textarea id="sa-delnote" placeholder="Required"></textarea></div>${err}
+    <div class="actions"><button class="btn danger" type="button" data-act="sadelete">Delete assessment</button>${cancel}</div></section>`;
+  if (f.kind === 'sa-review'){
+    const ap = sa.approvals[Number(f.role)];
+    return `<form class="inline-form form-grid" id="sareview" novalidate>
+      <div class="full"><div class="label">Review solution assessment · ${esc(ap.role)}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${sa.id}</span></h3>
+        <p class="muted" style="font-size:.85rem;margin-top:4px">${esc(sa.atype)}, ${esc(sa.vendor.toLowerCase())} vendor involvement, ${esc(sa.risk.toLowerCase())} risk, ${sa.effort} person-days. Every reviewer must approve before G4.</p></div>
+      <div class="field"><label for="rv-who">Decision recorded by</label><select id="rv-who">${[...new Set([ap.who, sa.author])].map(o => `<option>${esc(o)}</option>`).join('')}</select></div>
+      <div class="field"><label for="rv-note">Comments or conditions</label><textarea id="rv-note" placeholder="Required for conditions or rejection"></textarea></div>
+      ${err}<div class="actions full"><button class="btn primary" type="submit" data-decision="approve">Approve</button><button class="btn" type="submit" data-decision="conditions">Approve with conditions</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${cancel}</div></form>`;
+  }
+  const v = sa && f.kind === 'sa-edit' ? sa : {systems:[...b.systems], vendor:'None', vname:'', atype:'Configuration', approach:'', risk:'Medium', effort:''};
+  const id = f.kind === 'sa-edit' ? sa.id : 'SA-' + pad3(b.saSeq + 1);
+  const allSys = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+  const warn = f.kind === 'sa-edit' && sa.status !== 'Draft' ? `<p class="muted" style="font-size:.85rem;margin-top:4px">This assessment is ${sa.status.toLowerCase()}. Saving a change returns it to Draft, clears the approvals, and it must be submitted again.</p>` : '';
+  return `<form class="inline-form form-grid" id="saedit" novalidate>
+    <div class="full"><div class="label">${f.kind === 'sa-edit' ? 'Edit' : 'New'} solution assessment</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${id}</span></h3>${warn}</div>
+    <fieldset class="field full" style="border:0;padding:0;margin:0"><legend style="font-size:.8rem;font-weight:600;margin-bottom:4px">Impacted systems</legend>
+      <div class="checks">${allSys.map((s,i) => `<label><input type="checkbox" id="sa-sys-${i}" value="${esc(s)}" ${v.systems.includes(s)?'checked':''}> ${esc(s)}</label>`).join('')}</div></fieldset>
+    <div class="field"><label for="sa-vendor">Vendor involvement</label><select id="sa-vendor">${['None','Existing Vendor','New Vendor'].map(o => `<option ${o===v.vendor?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label for="sa-vname">Vendor name</label><input id="sa-vname" value="${esc(v.vname || '')}" placeholder="Required when a vendor is involved"></div>
+    <div class="field"><label for="sa-atype">Implementation approach</label><select id="sa-atype">${SA_TYPES.map(o => `<option ${o===v.atype?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label for="sa-effort">Estimated effort (person-days)</label><input id="sa-effort" type="number" min="1" step="1" value="${esc(v.effort)}"></div>
+    <div class="field"><label for="sa-risk">Risk rating</label><select id="sa-risk">${['Low','Medium','High','Critical'].map(o => `<option ${o===v.risk?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field full"><label for="sa-approach">Approach description and key risks</label><textarea id="sa-approach" placeholder="How the solution will be delivered, dependencies, and the main architectural risks">${esc(v.approach || '')}</textarea></div>
+    <p class="muted full" style="font-size:.82rem">Reviewers: ARB and Information Security always; Third-Party Risk when a vendor is involved; Operational Risk when risk is High or Critical.</p>
+    ${err}<div class="actions full"><button class="btn primary" type="submit">${f.kind === 'sa-edit' ? 'Save changes' : 'Save as draft'}</button>${cancel}</div></form>`;
+}
+
+function saSave(){
+  const b = getBcr(state.bcr), f = state.form, v = id => document.getElementById(id).value.trim();
+  const allSys = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+  const systems = allSys.filter((s,i) => document.getElementById('sa-sys-'+i).checked);
+  const next = {systems, vendor:v('sa-vendor'), vname:v('sa-vendor') === 'None' ? '' : v('sa-vname'), atype:v('sa-atype'), approach:v('sa-approach'), risk:v('sa-risk'), effort:Number(v('sa-effort'))};
+  const miss = [];
+  if (!systems.length) miss.push('at least one impacted system');
+  if (next.vendor !== 'None' && !next.vname) miss.push('the vendor name');
+  if (!(next.effort > 0)) miss.push('the estimated effort');
+  if (!next.approach) miss.push('the approach description');
+  if (miss.length) return formError(`Add ${miss.join(', ')}.`);
+  if (f.kind === 'sa-add'){
+    b.saSeq += 1; const id = 'SA-' + pad3(b.saSeq);
+    b.sa = {id, ...next, status:'Draft', arch:'Pending', sec:'Not reviewed', author:SA_AUTHOR, ver:1, approvals:[]};
+    log(SA_AUTHOR, 'Solution assessment created', `${b.id} / ${id}`, `Draft: ${next.atype}, ${next.vendor}, ${next.risk} risk, ${next.effort} person-days`);
+    state.form = null; toast(`${id} saved as draft`); return render();
+  }
+  const sa = b.sa, names = {systems:'impacted systems', vendor:'vendor involvement', vname:'vendor name', atype:'approach', approach:'approach description', risk:'risk rating', effort:'effort'};
+  const changed = Object.keys(next).filter(k => JSON.stringify(next[k]) !== JSON.stringify(sa[k] ?? (k === 'vname' ? '' : undefined)));
+  if (!changed.length) return formError('Nothing has changed.');
+  const wasLive = sa.status !== 'Draft';
+  Object.assign(sa, next); sa.ver = (sa.ver || 1) + 1;
+  if (wasLive){ sa.status = 'Draft'; sa.arch = 'Pending'; sa.sec = 'Not reviewed'; sa.approvals = []; }
+  log(SA_AUTHOR, 'Solution assessment edited', `${b.id} / ${sa.id}`, `Version ${sa.ver}: changed ${changed.map(k => names[k]).join(', ')}${wasLive ? '; returned to Draft, approvals cleared' : ''}`);
+  state.form = null; toast(`${sa.id} saved as version ${sa.ver}`); render();
+}
+
+function saSubmit(){
+  const b = getBcr(state.bcr), sa = b.sa;
+  sa.status = 'Submitted'; sa.arch = 'Pending'; sa.sec = 'Pending';
+  sa.approvals = saReviewers(sa).map(r => ({...r, st:'Pending', note:''}));
+  log('svc-reqgov (flow F5)', 'Assessment submitted for review', `${b.id} / ${sa.id}`, `Parallel approval sent to ${sa.approvals.map(a => a.role).join(', ')}`);
+  toast(`${sa.id} sent to ${sa.approvals.length} reviewers`); render();
+}
+
+function saReview(decision){
+  const b = getBcr(state.bcr), sa = b.sa, ap = sa.approvals[Number(state.form.role)];
+  const who = document.getElementById('rv-who').value, note = document.getElementById('rv-note').value.trim();
+  if (who === sa.author && who !== ap.who) return formError(`Segregation of duties: ${who} wrote this assessment and cannot review it.`);
+  if (who !== ap.who) return formError(`${ap.role} decides this review (${ap.who}).`);
+  if (decision !== 'approve' && !note) return formError(decision === 'reject' ? 'Add a comment explaining the rejection.' : 'Write the conditions in the comments.');
+  ap.st = decision === 'reject' ? 'Rejected' : decision === 'conditions' ? 'Approved with Conditions' : 'Approved'; ap.note = note;
+  log(who, `SA ${ap.st.toLowerCase()}`, `${b.id} / ${sa.id}`, `${ap.role}${note ? ': ' + note : ''}`);
+  if (ap.role.startsWith('Information')) sa.sec = ap.st === 'Rejected' ? 'Not cleared' : ap.st === 'Approved' ? 'Cleared' : 'Cleared with Conditions';
+  if (ap.role.startsWith('Enterprise')) sa.arch = ap.st;
+  if (ap.st === 'Rejected'){ sa.status = 'Rejected'; log('svc-reqgov (flow F5)', 'Assessment rejected', `${b.id} / ${sa.id}`, `Rejected by ${ap.role}; author must revise and resubmit`); }
+  else if (sa.approvals.every(x => SA_DONE.includes(x.st))){ sa.status = 'Approved'; log('svc-reqgov (flow F5)', 'Assessment approved', `${b.id} / ${sa.id}`, `All ${sa.approvals.length} reviewers approved; ready for G4`); }
+  state.form = null; toast(`${sa.id}: ${ap.role} ${ap.st.toLowerCase()}`); render();
+}
+
+function saDelete(){
+  const b = getBcr(state.bcr), sa = b.sa, note = document.getElementById('sa-delnote').value.trim();
+  if (!note) return formError('Give a reason for deleting the assessment.');
+  log(SA_AUTHOR, 'Solution assessment deleted', `${b.id} / ${sa.id}`, `Moved to recycle bin: ${note}`);
+  b.sa = null; state.form = null; toast(`${sa.id} deleted`); render();
+}
+
 function pendingItems(){
-  return DB.bcrs.filter(b => isOpen(b) && b.gate >= 2).flatMap(b => b.brs.flatMap(r => [
+  return DB.bcrs.filter(b => isOpen(b) && b.gate >= 2).flatMap(b => [...b.brs.flatMap(r => [
     ...r.frs.filter(f => PENDING.includes(f.st)).map(f => ({b, r, f, kind:'rfr'})),
     ...(PENDING.includes(r.status) ? [{b, r, kind:'rbr'}] : [])
-  ]));
+  ]), ...(b.sa && b.sa.status === 'Submitted' ? b.sa.approvals.map((ap, i) => ({b, ap, i, kind:'sa-review'})).filter(x => x.ap.st === 'Pending') : [])]);
 }
 function vApprovals(){
   const q = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).sort((a,b) => (isBreach(b)-isBreach(a)) || b.gate - a.gate);
   const items = pendingItems();
   return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Requirement decisions and gate decisions waiting on approvers. Approvers are resolved from the Approval Matrix list by system, business area and risk.</p></div></div>
-  <section style="display:grid;gap:10px"><h2>Requirement approvals <span class="muted" style="font-weight:400;font-size:.9rem">· ${items.length}</span></h2>
-  <p class="muted" style="font-size:.85rem">System Owners approve each FR. Business Owners approve each BR, which unlocks only after all of its FRs are approved.</p>
+  <section style="display:grid;gap:10px"><h2>Requirement and assessment approvals <span class="muted" style="font-weight:400;font-size:.9rem">· ${items.length}</span></h2>
+  <p class="muted" style="font-size:.85rem">System Owners approve each FR. Business Owners approve each BR, which unlocks only after all of its FRs are approved. Each solution assessment reviewer approves separately.</p>
   ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Request</th><th>Approver</th><th>State</th><th></th></tr></thead><tbody>
-  ${items.map(it => { const isFr = it.kind === 'rfr'; const pend = isFr ? 0 : it.r.frs.filter(f => !OK_FR.includes(f.st)).length; const ready = isFr || (it.r.frs.length && !pend);
+  ${items.map(it => { if (it.kind === 'sa-review') return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.b.sa.id}</span><b>SA · ${esc(it.b.sa.atype)}, ${esc(it.b.sa.risk)} risk</b></div></td>
+      <td>${esc(it.b.title)}</td><td>${esc(it.ap.who)}<br><span class="muted" style="font-size:.8rem">${esc(it.ap.role)}</span></td><td>${pill('Pending', 'accent')}</td>
+      <td><button class="btn" type="button" data-act="review" data-kind="sa-review" data-id="${it.b.id}" data-role="${it.i}">Review</button></td></tr>`;
+    const isFr = it.kind === 'rfr'; const pend = isFr ? 0 : it.r.frs.filter(f => !OK_FR.includes(f.st)).length; const ready = isFr || (it.r.frs.length && !pend);
     return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.r.id}${isFr ? ' / ' + it.f.id : ''}</span><b>${isFr ? 'FR' : 'BR'} · ${esc(isFr ? it.f.d : it.r.title)}</b></div></td>
     <td>${esc(it.b.title)}</td><td>${esc(isFr ? (SYSOWN[it.f.sys] || PEOPLE.sysown) : it.r.owner)}<br><span class="muted" style="font-size:.8rem">${isFr ? 'System Owner · ' + esc(it.f.sys) : 'Business Owner'}</span></td>
     <td>${ready ? pill(isFr ? it.f.st : 'Ready to approve', isFr ? stKind(it.f.st) : 'accent') : pill(it.r.frs.length ? `Waiting on ${pend} FR${pend===1?'':'s'}` : 'No FRs yet', 'warn')}</td>
@@ -857,7 +1000,6 @@ function decide(kind){
   b.returned = false;
   log(who, `Gate ${g.code} approved`, b.id, note || g.name + ' approved');
   if (b.gate === 3) b.brs.forEach(r => { r.status = 'Baselined'; });
-  if (b.gate === 4 && b.sa){ b.sa.status = 'Approved'; b.sa.arch = 'Approved'; b.sa.sec = 'Cleared'; }
   if (b.gate === 5){
     if (!b.uat) b.uat = {id:'UAT-001', owner:who};
     Object.assign(b.uat, {result:'Accepted', date:TODAY, status:'Signed Off', owner:who});
@@ -904,12 +1046,15 @@ document.addEventListener('click', e => {
   if (a === 'open'){ state.flash = null; go('detail', t.dataset.id); }
   if (a === 'addbr'){ state.form = {kind:'br'}; render(); document.getElementById('br-title')?.focus(); }
   if (a === 'addfr'){ state.form = {kind:'fr', br:t.dataset.br}; render(); const el = document.getElementById('fr-desc'); el?.focus(); el?.scrollIntoView({block:'center'}); }
-  if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render(); document.getElementById('reviewitem')?.scrollIntoView({block:'start'}); }
+  if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr, role:t.dataset.role}; render(); document.getElementById(t.dataset.kind === 'sa-review' ? 'sareview' : 'reviewitem')?.scrollIntoView({block:'start'}); }
   if (a === 'view' || a === 'edit'){ if (state.view !== 'detail' || (t.dataset.id && state.bcr !== t.dataset.id)) go('detail', t.dataset.id);
     state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render();
     document.getElementById(a === 'view' ? 'viewitem' : (t.dataset.kind === 'efr' ? 'editfr' : 'editbr'))?.scrollIntoView({block:'start'}); }
   if (a === 'cancelform'){ state.form = null; render(); }
-  if (a === 'reset'){ DB = clone(SEED); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
+  if (a === 'sa'){ state.form = {kind:t.dataset.kind, role:t.dataset.role}; render(); document.getElementById('saform')?.scrollIntoView({block:'center'}); document.getElementById(t.dataset.kind === 'sa-review' ? 'sareview' : 'saedit')?.scrollIntoView({block:'start'}); }
+  if (a === 'sasubmit') saSubmit();
+  if (a === 'sadelete') saDelete();
+  if (a === 'reset'){ DB = normalize(clone(SEED)); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
 });
 document.addEventListener('submit', e => {
   e.preventDefault();
@@ -918,6 +1063,8 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'addbr') submitBr();
   if (e.target.id === 'addfr') submitFr();
   if (e.target.id === 'editbr' || e.target.id === 'editfr') saveEdit();
+  if (e.target.id === 'saedit') saSave();
+  if (e.target.id === 'sareview') saReview(e.submitter?.dataset.decision || 'approve');
   if (e.target.id === 'reviewitem') submitReview(e.submitter?.dataset.decision || 'approve');
 });
 document.addEventListener('input', e => {
@@ -930,6 +1077,7 @@ document.addEventListener('change', e => {
 });
 const h = (location.hash || '').slice(1);
 if (['overview','register','approvals','audit','framework'].includes(h)) state.view = h;
+DB = normalize(clone(SEED));
 render();
 </script>
 </body>
