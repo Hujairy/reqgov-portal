@@ -193,6 +193,12 @@ dl{margin:0}
 .inline-form{border:1px dashed var(--accent);border-radius:8px;padding:16px;background:var(--accent-soft)}
 .inline-form .field input,.inline-form .field select,.inline-form .field textarea{background:var(--surface)}
 .btn.small{font-size:.8rem}
+.linkbtn{background:none;border:0;padding:0;cursor:pointer;color:var(--accent);text-align:left;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.linkbtn:hover{text-decoration-style:solid}
+.viewgrid{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:8px 16px;font-size:.88rem}
+.viewgrid > span:nth-child(odd){color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600;padding-top:2px}
+.viewgrid > span{min-width:0;overflow-wrap:anywhere;white-space:pre-line}
+@media (max-width:520px){.viewgrid{grid-template-columns:minmax(0,1fr)}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:.88rem;max-width:calc(100% - 32px);z-index:10}
 footer{color:var(--muted);font-size:.78rem;padding-block:0 32px}
 @media (prefers-reduced-motion:no-preference){.bcrchip,.btn,tbody tr.clickable td{transition:background .15s,border-color .15s}}
@@ -522,9 +528,111 @@ function submitReview(decision){
   state.form = null; toast(`${item.id} approved`); render();
 }
 
+function itemHistory(trace){
+  const h = DB.audit.filter(a => a.rec === trace);
+  return h.length ? `<ul class="timeline full">${h.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br>${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty full">No recorded changes yet.</p>';
+}
+
+function viewPanel(b){
+  const f = state.form, br = b.brs.find(r => r.id === f.br), canEdit = b.gate >= 2 && b.gate < 7;
+  const close = '<button class="btn" type="button" data-act="cancelform">Close</button>';
+  if (f.kind === 'vfr'){
+    const fr = br.frs.find(x => x.id === f.fr), trace = `${b.id} / ${br.id} / ${fr.id}`;
+    return `<section class="inline-form form-grid" id="viewitem" aria-label="Functional requirement ${fr.id}">
+      <div class="full" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><div class="label">Functional requirement · version ${fr.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${trace}</span> ${pill(fr.st, stKind(fr.st))}</h3></div>
+        <div class="actions">${canEdit ? `<button class="btn" type="button" data-act="edit" data-kind="efr" data-br="${br.id}" data-fr="${fr.id}">Edit</button>` : ''}${canEdit && (PENDING.includes(fr.st) || fr.st === 'Rejected') ? `<button class="btn primary" type="button" data-act="review" data-kind="rfr" data-id="${b.id}" data-br="${br.id}" data-fr="${fr.id}">${fr.st === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}${close}</div></div>
+      <div class="viewgrid full">
+        <span>Requirement</span><span>${esc(fr.d)}</span>
+        <span>Parent BR</span><span><button type="button" class="linkbtn" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${br.id}">${br.id} · ${esc(br.title)}</button> ${pill(br.status, stKind(br.status))}</span>
+        <span>Impacted system</span><span>${esc(fr.sys)}</span>
+        <span>System Owner</span><span>${esc(SYSOWN[fr.sys] || PEOPLE.sysown)} (approver)</span>
+        <span>Complexity</span><span>${esc(fr.cx)}</span>
+        <span>Author</span><span>${esc(fr.author || PEOPLE.ba)}</span>
+      </div>
+      <div class="full"><div class="label" style="margin-bottom:4px">History</div>${itemHistory(trace)}</div></section>`;
+  }
+  const trace = `${b.id} / ${br.id}`;
+  return `<section class="inline-form form-grid" id="viewitem" aria-label="Business requirement ${br.id}">
+    <div class="full" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><div class="label">Business requirement · version ${br.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${trace}</span> ${pill(br.status, stKind(br.status))}</h3></div>
+      <div class="actions">${canEdit ? `<button class="btn" type="button" data-act="edit" data-kind="ebr" data-br="${br.id}">Edit</button>` : ''}${canEdit && (PENDING.includes(br.status) || br.status === 'Rejected') ? `<button class="btn primary" type="button" data-act="review" data-kind="rbr" data-id="${b.id}" data-br="${br.id}">${br.status === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}${close}</div></div>
+    <div class="viewgrid full">
+      <span>Title</span><span><b>${esc(br.title)}</b></span>
+      <span>Statement</span><span>${esc(br.stmt)}</span>
+      <span>Justification</span><span>${esc(br.just || '—')}</span>
+      <span>Acceptance criteria</span><span>${esc(br.ac)}</span>
+      <span>Priority</span><span>${esc(br.pri)}</span>
+      <span>Business Owner</span><span>${esc(br.owner)} (approver)</span>
+      <span>Author</span><span>${esc(br.author || PEOPLE.ba)}</span>
+      <span>Functional requirements</span><span>${br.frs.length ? br.frs.map(x => `<button type="button" class="linkbtn idref" data-act="view" data-kind="vfr" data-id="${b.id}" data-br="${br.id}" data-fr="${x.id}">${x.id}</button> ${pill(x.st, stKind(x.st))}`).join('&nbsp; ') : 'None yet'}</span>
+      <span>Test cases</span><span>${br.tcs.length ? br.tcs.map(t => `<span class="idref" title="${esc(t.d)}">${t.id}</span> ${pill(t.r, resKind(t.r))}`).join('&nbsp; ') : 'None yet'}</span>
+    </div>
+    <div class="full"><div class="label" style="margin-bottom:4px">History</div>${itemHistory(trace)}</div></section>`;
+}
+
+function editForm(b){
+  const f = state.form, br = b.brs.find(r => r.id === f.br);
+  const err = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
+  const actions = `<div class="actions full"><button class="btn primary" type="submit">Save changes</button><button class="btn" type="button" data-act="view" data-kind="${f.kind === 'efr' ? 'vfr' : 'vbr'}" data-id="${b.id}" data-br="${br.id}" ${f.fr ? `data-fr="${f.fr}"` : ''}>Cancel</button></div>`;
+  if (f.kind === 'efr'){
+    const fr = br.frs.find(x => x.id === f.fr);
+    const systems = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+    if (!systems.includes(fr.sys)) systems.unshift(fr.sys);
+    return `<form class="inline-form form-grid" id="editfr" novalidate>
+      <div class="full"><div class="label">Edit functional requirement · version ${fr.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${br.id} / ${fr.id}</span></h3>
+        ${OK_FR.includes(fr.st) ? `<p class="muted" style="font-size:.85rem;margin-top:4px">This FR is approved. Saving a change opens change control: it needs System Owner re-approval${OK_BR.includes(br.status) ? `, and ${br.id} reopens until then` : ''}.</p>` : ''}</div>
+      <div class="field full"><label for="fr-desc">Functional requirement</label><textarea id="fr-desc">${esc(fr.d)}</textarea></div>
+      <div class="field"><label for="fr-sys">Impacted system</label><select id="fr-sys">${systems.map(s => `<option ${s===fr.sys?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
+      <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${['Low','Medium','High','Very High'].map(c => `<option ${c===fr.cx?'selected':''}>${c}</option>`).join('')}</select></div>
+      ${err}${actions}</form>`;
+  }
+  const owners = [...new Set([br.owner, b.sponsor, ...b.brs.map(r => r.owner)])];
+  return `<form class="inline-form form-grid" id="editbr" novalidate>
+    <div class="full"><div class="label">Edit business requirement · version ${br.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${br.id}</span></h3>
+      ${OK_BR.includes(br.status) ? '<p class="muted" style="font-size:.85rem;margin-top:4px">This BR is approved. Saving a change opens change control and needs Business Owner re-approval.</p>' : ''}</div>
+    <div class="field full"><label for="br-title">Requirement title</label><input id="br-title" value="${esc(br.title)}"></div>
+    <div class="field full"><label for="br-stmt">Requirement statement</label><textarea id="br-stmt">${esc(br.stmt)}</textarea></div>
+    <div class="field full"><label for="br-just">Business justification</label><textarea id="br-just">${esc(br.just || '')}</textarea></div>
+    <div class="field full"><label for="br-ac">Acceptance criteria</label><textarea id="br-ac">${esc(br.ac)}</textarea></div>
+    <div class="field"><label for="br-pri">Priority</label><select id="br-pri">${['Must','Should','Could',"Won't"].map(p => `<option ${p===br.pri?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="br-owner">Business owner</label><select id="br-owner">${owners.map(o => `<option ${o===br.owner?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
+    ${err}${actions}</form>`;
+}
+
+function saveEdit(){
+  const b = getBcr(state.bcr), f = state.form, br = b.brs.find(r => r.id === f.br);
+  const v = id => document.getElementById(id).value.trim();
+  if (f.kind === 'efr'){
+    const fr = br.frs.find(x => x.id === f.fr), trace = `${b.id} / ${br.id} / ${fr.id}`;
+    if (!v('fr-desc')) return formError('The functional requirement cannot be empty.');
+    const next = {d:v('fr-desc'), sys:v('fr-sys'), cx:v('fr-cx')}, names = {d:'requirement text', sys:'impacted system', cx:'complexity'};
+    const changed = Object.keys(next).filter(k => next[k] !== fr[k]);
+    if (!changed.length) return formError('Nothing has changed.');
+    const reopen = OK_FR.includes(fr.st);
+    Object.assign(fr, next); fr.ver = (fr.ver || 1) + 1;
+    if (reopen) fr.st = 'Change Requested';
+    log(PEOPLE.ba, 'FR edited', trace, `Version ${fr.ver}: changed ${changed.map(k => names[k]).join(', ')}${reopen ? `; re-approval required from ${SYSOWN[fr.sys] || PEOPLE.sysown}` : ''}`);
+    if (reopen && OK_BR.includes(br.status)){ br.status = 'Change Requested'; log('svc-reqgov (flow F3)', 'BR reopened', `${b.id} / ${br.id}`, `${fr.id} changed and is pending re-approval`); }
+    state.form = {kind:'vfr', br:br.id, fr:fr.id}; toast(`${fr.id} saved as version ${fr.ver}`); return render();
+  }
+  const trace = `${b.id} / ${br.id}`;
+  const req = [['br-title','title'],['br-stmt','requirement statement'],['br-ac','acceptance criteria']].filter(([id]) => !v(id)).map(([,n]) => n);
+  if (req.length) return formError(`Add the ${req.join(', ')}.`);
+  const next = {title:v('br-title'), stmt:v('br-stmt'), just:v('br-just'), ac:v('br-ac'), pri:v('br-pri'), owner:v('br-owner')};
+  const names = {title:'title', stmt:'statement', just:'justification', ac:'acceptance criteria', pri:'priority', owner:'business owner'};
+  const changed = Object.keys(next).filter(k => next[k] !== (br[k] || ''));
+  if (!changed.length) return formError('Nothing has changed.');
+  const reopen = OK_BR.includes(br.status);
+  Object.assign(br, next); br.ver = (br.ver || 1) + 1;
+  if (reopen) br.status = 'Change Requested';
+  log(PEOPLE.ba, 'BR edited', trace, `Version ${br.ver}: changed ${changed.map(k => names[k]).join(', ')}${reopen ? `; re-approval required from ${br.owner}` : ''}`);
+  state.form = {kind:'vbr', br:br.id}; toast(`${br.id} saved as version ${br.ver}`); render();
+}
+
 function reqForm(b){
   const f = state.form; if (!f) return '';
   if (f.kind === 'rfr' || f.kind === 'rbr') return reviewForm(b);
+  if (f.kind === 'vfr' || f.kind === 'vbr') return viewPanel(b);
+  if (f.kind === 'efr' || f.kind === 'ebr') return editForm(b);
   const err = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
   const actions = label => `<div class="actions full"><button class="btn primary" type="submit">${label}</button><button class="btn" type="button" data-act="cancelform">Cancel</button></div>`;
   if (f.kind === 'br'){
@@ -602,9 +710,9 @@ function vDetail(){
 
   const rtm = b.brs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Business requirement</th><th>Functional requirements</th><th>Test cases</th><th>UAT</th><th>Change</th></tr></thead><tbody>
     ${b.brs.map(r => { const okN = r.frs.filter(f => OK_FR.includes(f.st)).length, brOpen = canEdit && (PENDING.includes(r.status) || r.status === 'Rejected');
-      return `<tr><td style="min-width:230px"><div class="cellstack"><span><span class="idref">${r.id}</span> ${pill(r.status, stKind(r.status))}</span><b>${esc(r.title)}</b><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span>
+      return `<tr><td style="min-width:230px"><div class="cellstack"><span><button type="button" class="linkbtn idref" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${r.id}">${r.id}</button> ${pill(r.status, stKind(r.status))}</span><button type="button" class="linkbtn" style="font-weight:600;color:var(--ink)" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${r.id}">${esc(r.title)}</button><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span>
         ${brOpen ? `<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn link small" type="button" data-act="review" data-kind="rbr" data-id="${b.id}" data-br="${r.id}">${r.status === 'Rejected' ? 'Revise' : 'Review BR'}</button><span class="muted" style="font-size:.78rem">${okN} of ${r.frs.length} FRs approved</span></span>` : ''}</div></td>
-      <td style="min-width:240px"><div class="cellstack">${r.frs.map(f => `<span title="${esc(f.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="idref">${f.id}</span><span class="muted" style="font-size:.82rem">${esc(f.sys)} · ${f.cx}</span>${pill(f.st, stKind(f.st))}${canEdit && (PENDING.includes(f.st) || f.st === 'Rejected') ? `<button class="btn link small" type="button" data-act="review" data-kind="rfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.st === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}</span>`).join('') || pill('No FR', b.gate>2?'crit':'')}${canEdit ? `<button class="btn link small" type="button" data-act="addfr" data-br="${r.id}" style="justify-self:start">+ Add FR</button>` : ''}</div></td>
+      <td style="min-width:240px"><div class="cellstack">${r.frs.map(f => `<span title="${esc(f.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" class="linkbtn idref" data-act="view" data-kind="vfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.id}</button><span class="muted" style="font-size:.82rem">${esc(f.sys)} · ${f.cx}</span>${pill(f.st, stKind(f.st))}${canEdit && (PENDING.includes(f.st) || f.st === 'Rejected') ? `<button class="btn link small" type="button" data-act="review" data-kind="rfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.st === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}</span>`).join('') || pill('No FR', b.gate>2?'crit':'')}${canEdit ? `<button class="btn link small" type="button" data-act="addfr" data-br="${r.id}" style="justify-self:start">+ Add FR</button>` : ''}</div></td>
       <td style="min-width:150px"><div class="cellstack">${r.tcs.map(t => `<span><span class="idref">${t.id}</span> ${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}</div></td>
       <td>${b.uat ? `<span class="idref">${b.uat.id}</span><br>${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'')}` : '<span class="muted">—</span>'}</td>
       <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
@@ -797,6 +905,9 @@ document.addEventListener('click', e => {
   if (a === 'addbr'){ state.form = {kind:'br'}; render(); document.getElementById('br-title')?.focus(); }
   if (a === 'addfr'){ state.form = {kind:'fr', br:t.dataset.br}; render(); const el = document.getElementById('fr-desc'); el?.focus(); el?.scrollIntoView({block:'center'}); }
   if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render(); document.getElementById('reviewitem')?.scrollIntoView({block:'start'}); }
+  if (a === 'view' || a === 'edit'){ if (state.view !== 'detail' || (t.dataset.id && state.bcr !== t.dataset.id)) go('detail', t.dataset.id);
+    state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render();
+    document.getElementById(a === 'view' ? 'viewitem' : (t.dataset.kind === 'efr' ? 'editfr' : 'editbr'))?.scrollIntoView({block:'start'}); }
   if (a === 'cancelform'){ state.form = null; render(); }
   if (a === 'reset'){ DB = clone(SEED); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
 });
@@ -806,6 +917,7 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'newbcr') submitNew();
   if (e.target.id === 'addbr') submitBr();
   if (e.target.id === 'addfr') submitFr();
+  if (e.target.id === 'editbr' || e.target.id === 'editfr') saveEdit();
   if (e.target.id === 'reviewitem') submitReview(e.submitter?.dataset.decision || 'approve');
 });
 document.addEventListener('input', e => {
