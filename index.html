@@ -190,6 +190,20 @@ dl{margin:0}
 .lvl p{font-size:.85rem;color:var(--muted)}
 .lvl .fields{font-size:.8rem}
 
+details.history > summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none}
+details.history > summary::-webkit-details-marker{display:none}
+details.history > summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);flex:none;margin-right:2px}
+details.history[open] > summary::before{transform:rotate(45deg)}
+@media (prefers-reduced-motion:no-preference){details.history > summary::before{transition:transform .15s}}
+.admin{display:grid;grid-template-columns:minmax(200px,240px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.admin{grid-template-columns:minmax(0,1fr)}}
+.adminnav{display:grid;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px}
+@media (max-width:820px){.adminnav{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
+.adminnav button{display:flex;justify-content:space-between;gap:8px;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;cursor:pointer;font-weight:500}
+.adminnav button:hover{background:var(--sunk)}
+.adminnav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent)}
+.admin td input:not([type=checkbox]),.admin td select,#admadd input,#admadd select{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 9px;width:100%}
+.admin td input:disabled{background:var(--sunk);color:var(--muted)}
 .inline-form{border:1px dashed var(--accent);border-radius:8px;padding:16px;background:var(--accent-soft)}
 .inline-form .field input,.inline-form .field select,.inline-form .field textarea{background:var(--surface)}
 .btn.small{font-size:.8rem}
@@ -228,23 +242,49 @@ footer{color:var(--muted);font-size:.78rem;padding-block:0 32px}
 <script>
 const TODAY = '2026-10-11';
 const GATES = [
-  {g:0, code:'G0', name:'Submission check', sla:0, who:'Automatic validation (flow F1)'},
-  {g:1, code:'G1', name:'BCR approval', sla:5, who:'Business Sponsor, then Demand Manager'},
-  {g:2, code:'G2', name:'FR approval', sla:5, who:'System Owner approves each FR; Lead BA confirms'},
-  {g:3, code:'G3', name:'BR approval & baseline', sla:5, who:'Business Owner approves each BR; Lead BA baselines'},
-  {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, InfoSec and Risk approve the SA; ARB chair confirms'},
-  {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'QA Lead approves tests; Business Owner signs UAT; Governance Office confirms'},
-  {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager / CAB approve; PIR completed; Change Manager closes'}
+  {g:0, code:'L0', name:'Submission check', sla:0, who:'Automatic validation (flow F1)'},
+  {g:1, code:'L1', name:'BCR approval', sla:5, who:'Business Sponsor, then Demand Manager'},
+  {g:2, code:'L2', name:'FR approval', sla:5, who:'System Owner approves each FR; Lead BA confirms'},
+  {g:3, code:'L3', name:'BR approval & baseline', sla:5, who:'Business Owner approves each BR; Lead BA baselines'},
+  {g:4, code:'L4', name:'Solution assessment', sla:10, who:'ARB, InfoSec and Risk approve the SA; ARB chair confirms'},
+  {g:5, code:'L5', name:'UAT sign-off', sla:3, who:'QA Lead approves tests; Business Owner signs UAT; Governance Office confirms'},
+  {g:6, code:'L6', name:'CAB & release', sla:7, who:'Change Manager / CAB approve; PIR completed; Change Manager closes'}
 ];
 const STATUS_AT = {1:'Submitted',2:'Approved · FRs in review',3:'BRs in review',4:'Under ARB review',5:'UAT pending sign-off',6:'Awaiting CAB',7:'Closed'};
 const PEOPLE = {
   demand:'Noora Abdulla', ba:'Maryam Hasan', sysown:'Yusuf Mahmood', arb:'Ali Radhi', infosec:'Hussain Ali', chg:'Sara Ebrahim', qa:'Omar Saleh'
 };
-const SYSOWN = {'Core Banking':'Yusuf Mahmood','Payments Hub':'Nadia Fardan','Mobile App':'Sayed Jaffar','Internet Banking':'Sayed Jaffar','Data Warehouse':'Mariam Ghuloom','Trade Finance':'Abbas Hilal','AML Platform':'Nadia Fardan','Branch Systems':'Yusuf Mahmood','Card Management':'Abbas Hilal'};
 const OK_FR = ['Approved','Built','Verified'], OK_BR = ['Approved','Baselined','Verified'], PENDING = ['Draft','Change Requested'];
 const stKind = s => OK_FR.includes(s) || OK_BR.includes(s) ? 'good' : s === 'Change Requested' ? 'warn' : s === 'Rejected' ? 'crit' : '';
-const AREAS = ['Retail Banking','Corporate Banking','Digital Channels','Compliance','Cards'];
-const SYSTEMS = ['Core Banking','Payments Hub','Mobile App','Internet Banking','Data Warehouse','Trade Finance','AML Platform','Branch Systems','Card Management'];
+/* Customisable dropdown lists (Admin page). `locked` values drive workflow rules and cannot be renamed or removed. */
+const ROUTES = {'cm-cab':'Change Manager, then CAB', 'cm':'Change Manager only', 'ecab':'Emergency CAB (may precede UAT sign-off)'};
+const DEFAULT_LISTS = {
+  areas:{label:'Business areas', where:'New BCR form and register filter', values:['Retail Banking','Corporate Banking','Digital Channels','Compliance','Cards']},
+  bcrPriority:{label:'BCR priority', where:'New BCR form and register filter', values:['Critical','High','Medium','Low']},
+  systems:{label:'Impacted systems', where:'BCR, functional requirements and solution assessment. The System Owner approves FRs for the system.', attr:'owner', values:[
+    {v:'Core Banking', owner:'Yusuf Mahmood'},{v:'Payments Hub', owner:'Nadia Fardan'},{v:'Mobile App', owner:'Sayed Jaffar'},{v:'Internet Banking', owner:'Sayed Jaffar'},{v:'Data Warehouse', owner:'Mariam Ghuloom'},
+    {v:'Trade Finance', owner:'Abbas Hilal'},{v:'AML Platform', owner:'Nadia Fardan'},{v:'Branch Systems', owner:'Yusuf Mahmood'},{v:'Card Management', owner:'Abbas Hilal'}]},
+  brPriority:{label:'BR priority', where:'Business requirement form', values:['Must','Should','Could',"Won't"]},
+  complexity:{label:'FR complexity', where:'Functional requirement form', values:['Low','Medium','High','Very High']},
+  vendor:{label:'Vendor involvement', where:'Solution assessment. Any value other than None adds a Third-Party Risk reviewer.', locked:['None'], values:['None','Existing Vendor','New Vendor']},
+  approach:{label:'Implementation approaches', where:'Solution assessment', values:['Configuration','In-house Development','Vendor Package','Integration','Hybrid']},
+  risk:{label:'Risk ratings', where:'Solution assessment and change requests', attr:'oprisk', values:[{v:'Low'},{v:'Medium'},{v:'High', oprisk:true},{v:'Critical', oprisk:true}]},
+  testTypes:{label:'Test types', where:'Test case form', values:['SIT','UAT','Regression','Security','Performance']},
+  testResults:{label:'Test results', where:'Record test result. Only Pass counts toward UAT readiness; Fail needs a defect reference.', locked:['Pass','Fail'], values:['Pass','Fail','Blocked']},
+  chgType:{label:'Change types', where:'Change request form. The approval route decides who approves the change.', attr:'route', values:[{v:'Normal', route:'cm-cab'},{v:'Standard', route:'cm'},{v:'Emergency', route:'ecab'}]},
+  deployOutcomes:{label:'Deployment outcomes', where:'Record deployment. Deployed opens the post-implementation review.', locked:['Deployed'], values:['Deployed','Failed','Rolled Back']},
+  pirOutcomes:{label:'PIR outcomes', where:'Post-implementation review', values:['Successful','Issues Raised']}
+};
+function buildLists(){
+  const out = {};
+  Object.entries(DEFAULT_LISTS).forEach(([k, d]) => { out[k] = {...d, locked:[...(d.locked || [])], values:d.values.map(x => typeof x === 'string' ? {v:x} : {...x})}; });
+  return out;
+}
+const L = key => DB.lists[key].values.map(x => x.v);
+const listAttr = (key, v, a) => DB.lists[key].values.find(x => x.v === v)?.[a];
+const sysOwner = s => listAttr('systems', s, 'owner') || PEOPLE.sysown;
+const chgRoute = t => listAttr('chgType', t, 'route') || 'cm-cab';
+const isEmergency = t => chgRoute(t) === 'ecab';
 
 const SEED = {
   counter: 6, chgCounter: 567,
@@ -326,10 +366,10 @@ const SEED = {
   audit: [
     {t:'2026-10-08T14:22', who:'Omar Saleh', act:'Test case result recorded', rec:'BCR-2026-001 / BR-003 / TC-004', det:'Result set to Pass'},
     {t:'2026-10-08T14:30', who:'svc-reqgov (flow F6)', act:'UAT readiness check passed', rec:'BCR-2026-001 / UAT-001', det:'4 of 4 test cases Pass; 3 of 3 BRs covered'},
-    {t:'2026-10-06T10:05', who:'svc-reqgov (flow F1)', act:'ID issued', rec:'BCR-2026-005', det:'G0 validation passed; status set to Submitted'},
-    {t:'2026-10-01T16:40', who:'Mohamed Shehab', act:'Gate G5 approved', rec:'BCR-2026-004 / UAT-001', det:'UAT accepted; signer is not a test executor'},
+    {t:'2026-10-06T10:05', who:'svc-reqgov (flow F1)', act:'ID issued', rec:'BCR-2026-005', det:'L0 validation passed; status set to Submitted'},
+    {t:'2026-10-01T16:40', who:'Mohamed Shehab', act:'Level L5 approved', rec:'BCR-2026-004 / UAT-001', det:'UAT accepted; signer is not a test executor'},
     {t:'2026-10-01T16:41', who:'svc-reqgov (flow F8)', act:'Change request created', rec:'BCR-2026-004 / CHG-00561', det:'Routed to CAB (Normal change)'},
-    {t:'2026-09-24T11:12', who:'Reem Bucheeri', act:'Gate G1 approved', rec:'BCR-2026-003', det:'Sponsor approval recorded'},
+    {t:'2026-09-24T11:12', who:'Reem Bucheeri', act:'Level L1 approved', rec:'BCR-2026-003', det:'Sponsor approval recorded'},
     {t:'2026-09-21T09:30', who:'svc-reqgov (flow F5)', act:'Assessment submitted to ARB', rec:'BCR-2026-002 / SA-001', det:'New vendor: third-party risk review added'},
     {t:'2026-09-02T12:00', who:'svc-reqgov (flow F9)', act:'BCR closed', rec:'BCR-2026-006', det:'PIR completed; Document Set declared a record'}
   ]
@@ -367,7 +407,7 @@ function exceptions(){
   const out = [];
   DB.bcrs.forEach(b => {
     if (!isOpen(b)) return;
-    if (isBreach(b)) out.push({sev:'Medium', rule:'Gate SLA', bcr:b.id, txt:`${GATES[b.gate].code} ${GATES[b.gate].name}: ${daysAtGate(b)} working days against a ${GATES[b.gate].sla}-day SLA`});
+    if (isBreach(b)) out.push({sev:'Medium', rule:'Level SLA', bcr:b.id, txt:`${GATES[b.gate].code} ${GATES[b.gate].name}: ${daysAtGate(b)} working days against a ${GATES[b.gate].sla}-day SLA`});
     b.brs.filter(r => r.status === 'Baselined').forEach(r => {
       if (!r.frs.length) out.push({sev:'Medium', rule:'BR coverage', bcr:b.id, txt:`${r.id} has no functional requirement`});
       if (!r.tcs.length) out.push({sev:'High', rule:'Test coverage', bcr:b.id, txt:`${r.id} has no test case`});
@@ -379,14 +419,14 @@ function exceptions(){
 }
 
 /* ---------- navigation ---------- */
-const TABS = [['overview','Overview'],['register','BCR Register'],['approvals','My approvals'],['audit','Audit log'],['framework','Framework']];
+const TABS = [['overview','Overview'],['register','BCR Register'],['approvals','My approvals'],['audit','Audit log'],['framework','Framework'],['admin','Admin']];
 function renderTabs(){
   const pending = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).length + pendingItems().length;
   document.getElementById('tabs').innerHTML = TABS.map(([k,l]) =>
     `<button type="button" data-act="nav" data-view="${k}" ${state.view===k || (state.view==='detail' && k==='register') || (state.view==='new' && k==='register') ? 'aria-current="page"' : ''}>${l}${k==='approvals' ? `<span class="badge">${pending}</span>` : ''}</button>`).join('');
 }
-function go(view, bcr){ state.view = view; state.form = null; state.notice = null; if (bcr !== undefined) state.bcr = bcr; if (view !== 'detail') state.flash = null; render(); window.scrollTo(0,0);
-  try { if (['overview','register','approvals','audit','framework'].includes(view)) history.replaceState(null,'','#'+view); } catch(e){} }
+function go(view, bcr){ state.view = view; state.adminMsg = null; state.form = null; state.notice = null; if (bcr !== undefined) state.bcr = bcr; if (view !== 'detail') state.flash = null; render(); window.scrollTo(0,0);
+  try { if (['overview','register','approvals','audit','framework','admin'].includes(view)) history.replaceState(null,'','#'+view); } catch(e){} }
 
 /* ---------- views ---------- */
 function vOverview(){
@@ -397,15 +437,15 @@ function vOverview(){
   const stages = GATES.slice(1).map(g => ({...g, items: DB.bcrs.filter(b => b.gate === g.g)}));
   stages.push({code:'—', name:'Closed', items: DB.bcrs.filter(b => b.gate === 7), closed:true});
   return `
-  <div class="pagehead"><div><h1>Requirements pipeline</h1><p class="muted">Every business change request in flight, by the gate it is waiting on. Snapshot as of ${fmtDate(TODAY)}.</p></div>
+  <div class="pagehead"><div><h1>Requirements pipeline</h1><p class="muted">Every business change request in flight, by the level it is waiting on. Snapshot as of ${fmtDate(TODAY)}.</p></div>
     <button class="btn primary" type="button" data-act="nav" data-view="new">New business change request</button></div>
   <section class="kpis" aria-label="Key figures">
     <div class="kpi"><div class="label">Open BCRs</div><div class="v">${open.length}</div><div class="s">${open.filter(b=>b.reg).length} regulatory</div></div>
-    <div class="kpi"><div class="label">Decisions pending</div><div class="v">${open.filter(b=>b.gate>=1).length}</div><div class="s">across gates G1–G6</div></div>
+    <div class="kpi"><div class="label">Decisions pending</div><div class="v">${open.filter(b=>b.gate>=1).length}</div><div class="s">across levels L1–L6</div></div>
     <div class="kpi"><div class="label">BR test coverage</div><div class="v">${based.length ? Math.round(covered/based.length*100) : 0}%</div><div class="s">${covered} of ${based.length} baselined BRs</div></div>
     <div class="kpi ${ex.length ? 'alert' : ''}"><div class="label">Traceability exceptions</div><div class="v">${ex.length}</div><div class="s">from the nightly scan</div></div>
   </section>
-  <section class="panel"><header><h2>Stage gates</h2><span class="muted" style="font-size:.8rem">Red edge = SLA breached</span></header>
+  <section class="panel"><header><h2>Approval levels</h2><span class="muted" style="font-size:.8rem">Red edge = SLA breached</span></header>
     <div class="pipe-scroll"><div class="pipe">
     ${stages.map(s => `<div class="stage"><span class="code">${s.code}</span><span class="nm">${esc(s.name)}</span><span class="ct">${s.items.length}</span>
       <div class="chiplist">${s.items.map(b => `<button type="button" class="bcrchip ${isBreach(b)?'breach':''}" data-act="open" data-id="${b.id}"><span class="mono">${b.id}${s.closed?'':` · ${daysAtGate(b)}d`}</span><span>${esc(b.title)}</span></button>`).join('') || '<span class="empty">None</span>'}</div></div>`).join('')}
@@ -427,10 +467,10 @@ function vRegister(){
     <button class="btn primary" type="button" data-act="nav" data-view="new">New business change request</button></div>
   <div class="filters">
     <input id="f-q" type="search" placeholder="Search by ID, title, domain or sponsor" value="${esc(f.q)}" aria-label="Search">
-    <select id="f-area" aria-label="Business area"><option value="">All business areas</option>${AREAS.map(a=>`<option ${f.area===a?'selected':''}>${a}</option>`).join('')}</select>
-    <select id="f-pri" aria-label="Priority"><option value="">All priorities</option>${['Critical','High','Medium','Low'].map(p=>`<option ${f.pri===p?'selected':''}>${p}</option>`).join('')}</select>
+    <select id="f-area" aria-label="Business area"><option value="">All business areas</option>${L('areas').map(a=>`<option ${f.area===a?'selected':''}>${a}</option>`).join('')}</select>
+    <select id="f-pri" aria-label="Priority"><option value="">All priorities</option>${L('bcrPriority').map(p=>`<option ${f.pri===p?'selected':''}>${esc(p)}</option>`).join('')}</select>
   </div>
-  <div class="tbl-wrap"><table><thead><tr><th>BCR ID</th><th>Title</th><th>Business area · Domain</th><th>Priority</th><th>Gate</th><th>Status</th><th>Sponsor</th><th>Target go-live</th></tr></thead><tbody>
+  <div class="tbl-wrap"><table><thead><tr><th>BCR ID</th><th>Title</th><th>Business area · Domain</th><th>Priority</th><th>Level</th><th>Status</th><th>Sponsor</th><th>Target go-live</th></tr></thead><tbody>
   ${rows.map(b => `<tr class="clickable" data-act="open" data-id="${b.id}"><td class="idref">${b.id}</td><td><div class="cellstack"><b>${esc(b.title)}</b>${b.reg?'<span class="pill plain warn" style="width:max-content">Regulatory</span>':''}</div></td>
     <td>${esc(b.area)}<br><span class="muted">${esc(b.domain)}</span></td><td>${pill(b.priority, priKind(b.priority))}</td>
     <td class="mono">${b.gate<7 ? GATES[b.gate].code : '—'}</td><td>${pill(statusOf(b), statusKind(b))}</td><td>${esc(b.sponsor)}</td><td class="num">${fmtDate(b.target)}</td></tr>`).join('') ||
@@ -474,7 +514,7 @@ function reviewForm(b){
   const kv = obj => `<div class="kv full" style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.85rem">${Object.entries(obj).map(([k,v]) => `<span class="muted">${k}</span><span>${v}</span>`).join('')}</div>`;
   let item, head, body, approver, blockers = [];
   if (f.kind === 'rfr'){
-    item = br.frs.find(x => x.id === f.fr); approver = SYSOWN[item.sys] || PEOPLE.sysown;
+    item = br.frs.find(x => x.id === f.fr); approver = sysOwner(item.sys);
     head = `Review functional requirement`;
     body = `<p class="full">${esc(item.d)}</p>${kv({'Parent BR':`${br.id} · ${esc(br.title)}`, 'Impacted system':esc(item.sys), 'Complexity':item.cx, 'Status':pill(item.st, stKind(item.st)), 'Approver':`${esc(approver)} (System Owner)`})}`;
   } else {
@@ -506,7 +546,7 @@ function submitReview(decision){
   const isFr = f.kind === 'rfr', item = isFr ? br.frs.find(x => x.id === f.fr) : br;
   const who = document.getElementById('rv-who').value, note = document.getElementById('rv-note').value.trim();
   const trace = isFr ? `${b.id} / ${br.id} / ${item.id}` : `${b.id} / ${br.id}`;
-  const approver = isFr ? (SYSOWN[item.sys] || PEOPLE.sysown) : br.owner;
+  const approver = isFr ? (sysOwner(item.sys)) : br.owner;
   const author = item.author || PEOPLE.ba;
   const label = isFr ? 'FR' : 'BR';
   const setSt = v => { if (isFr) item.st = v; else item.status = v; };
@@ -549,7 +589,7 @@ function viewPanel(b){
         <span>Requirement</span><span>${esc(fr.d)}</span>
         <span>Parent BR</span><span><button type="button" class="linkbtn" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${br.id}">${br.id} · ${esc(br.title)}</button> ${pill(br.status, stKind(br.status))}</span>
         <span>Impacted system</span><span>${esc(fr.sys)}</span>
-        <span>System Owner</span><span>${esc(SYSOWN[fr.sys] || PEOPLE.sysown)} (approver)</span>
+        <span>System Owner</span><span>${esc(sysOwner(fr.sys))} (approver)</span>
         <span>Complexity</span><span>${esc(fr.cx)}</span>
         <span>Author</span><span>${esc(fr.author || PEOPLE.ba)}</span>
       </div>
@@ -579,14 +619,14 @@ function editForm(b){
   const actions = `<div class="actions full"><button class="btn primary" type="submit">Save changes</button><button class="btn" type="button" data-act="view" data-kind="${f.kind === 'efr' ? 'vfr' : 'vbr'}" data-id="${b.id}" data-br="${br.id}" ${f.fr ? `data-fr="${f.fr}"` : ''}>Cancel</button></div>`;
   if (f.kind === 'efr'){
     const fr = br.frs.find(x => x.id === f.fr);
-    const systems = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+    const systems = [...b.systems, ...L('systems').filter(s => !b.systems.includes(s))];
     if (!systems.includes(fr.sys)) systems.unshift(fr.sys);
     return `<form class="inline-form form-grid" id="editfr" novalidate>
       <div class="full"><div class="label">Edit functional requirement · version ${fr.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${br.id} / ${fr.id}</span></h3>
         ${OK_FR.includes(fr.st) ? `<p class="muted" style="font-size:.85rem;margin-top:4px">This FR is approved. Saving a change opens change control: it needs System Owner re-approval${OK_BR.includes(br.status) ? `, and ${br.id} reopens until then` : ''}.</p>` : ''}</div>
       <div class="field full"><label for="fr-desc">Functional requirement</label><textarea id="fr-desc">${esc(fr.d)}</textarea></div>
       <div class="field"><label for="fr-sys">Impacted system</label><select id="fr-sys">${systems.map(s => `<option ${s===fr.sys?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
-      <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${['Low','Medium','High','Very High'].map(c => `<option ${c===fr.cx?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${L('complexity').map(c => `<option ${c===fr.cx?'selected':''}>${c}</option>`).join('')}</select></div>
       ${err}${actions}</form>`;
   }
   const owners = [...new Set([br.owner, b.sponsor, ...b.brs.map(r => r.owner)])];
@@ -597,7 +637,7 @@ function editForm(b){
     <div class="field full"><label for="br-stmt">Requirement statement</label><textarea id="br-stmt">${esc(br.stmt)}</textarea></div>
     <div class="field full"><label for="br-just">Business justification</label><textarea id="br-just">${esc(br.just || '')}</textarea></div>
     <div class="field full"><label for="br-ac">Acceptance criteria</label><textarea id="br-ac">${esc(br.ac)}</textarea></div>
-    <div class="field"><label for="br-pri">Priority</label><select id="br-pri">${['Must','Should','Could',"Won't"].map(p => `<option ${p===br.pri?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="br-pri">Priority</label><select id="br-pri">${L('brPriority').map(p => `<option ${p===br.pri?'selected':''}>${p}</option>`).join('')}</select></div>
     <div class="field"><label for="br-owner">Business owner</label><select id="br-owner">${owners.map(o => `<option ${o===br.owner?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
     ${err}${actions}</form>`;
 }
@@ -614,7 +654,7 @@ function saveEdit(){
     const reopen = OK_FR.includes(fr.st);
     Object.assign(fr, next); fr.ver = (fr.ver || 1) + 1;
     if (reopen) fr.st = 'Change Requested';
-    log(PEOPLE.ba, 'FR edited', trace, `Version ${fr.ver}: changed ${changed.map(k => names[k]).join(', ')}${reopen ? `; re-approval required from ${SYSOWN[fr.sys] || PEOPLE.sysown}` : ''}`);
+    log(PEOPLE.ba, 'FR edited', trace, `Version ${fr.ver}: changed ${changed.map(k => names[k]).join(', ')}${reopen ? `; re-approval required from ${sysOwner(fr.sys)}` : ''}`);
     if (reopen && OK_BR.includes(br.status)){ br.status = 'Change Requested'; log('svc-reqgov (flow F3)', 'BR reopened', `${b.id} / ${br.id}`, `${fr.id} changed and is pending re-approval`); }
     state.form = {kind:'vfr', br:br.id, fr:fr.id}; toast(`${fr.id} saved as version ${fr.ver}`); return render();
   }
@@ -649,18 +689,18 @@ function reqForm(b){
       <div class="field full"><label for="br-stmt">Requirement statement</label><textarea id="br-stmt" placeholder="The business needs…"></textarea></div>
       <div class="field full"><label for="br-just">Business justification</label><textarea id="br-just" placeholder="Why this requirement matters"></textarea></div>
       <div class="field full"><label for="br-ac">Acceptance criteria</label><textarea id="br-ac" placeholder="Testable statements, one per line"></textarea></div>
-      <div class="field"><label for="br-pri">Priority</label><select id="br-pri">${['Must','Should','Could',"Won't"].map(p => `<option>${p}</option>`).join('')}</select></div>
+      <div class="field"><label for="br-pri">Priority</label><select id="br-pri">${L('brPriority').map(p => `<option>${p}</option>`).join('')}</select></div>
       <div class="field"><label for="br-owner">Business owner</label><select id="br-owner">${owners.map(o => `<option>${esc(o)}</option>`).join('')}</select></div>
       ${err}${actions('Add business requirement')}</form>`;
   }
   const br = b.brs.find(r => r.id === f.br);
-  const systems = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+  const systems = [...b.systems, ...L('systems').filter(s => !b.systems.includes(s))];
   return `<form class="inline-form form-grid" id="addfr" novalidate>
     <div class="full"><div class="label">New functional requirement for ${esc(br.id)} · ${esc(br.title)}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${br.id} / ${nextFr(b)}</span></h3>
-      <p class="muted" style="font-size:.85rem;margin-top:4px">${b.gate > 2 ? 'The FR gate has passed, so this one opens change control. ' : ''}It needs approval from the System Owner of the system you pick.${OK_BR.includes(br.status) ? ` ${br.id} is already approved and will reopen until this FR is approved.` : ''}</p></div>
+      <p class="muted" style="font-size:.85rem;margin-top:4px">${b.gate > 2 ? 'Level L2 (FR approval) has passed, so this one opens change control. ' : ''}It needs approval from the System Owner of the system you pick.${OK_BR.includes(br.status) ? ` ${br.id} is already approved and will reopen until this FR is approved.` : ''}</p></div>
     <div class="field full"><label for="fr-desc">Functional requirement</label><textarea id="fr-desc" placeholder="The system shall…"></textarea></div>
     <div class="field"><label for="fr-sys">Impacted system</label><select id="fr-sys">${systems.map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
-    <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${['Low','Medium','High','Very High'].map(c => `<option ${c==='Medium'?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${L('complexity').map(c => `<option ${c==='Medium'?'selected':''}>${c}</option>`).join('')}</select></div>
     ${err}${actions('Add functional requirement')}</form>`;
 }
 
@@ -682,7 +722,7 @@ function submitFr(){
   if (!d) return formError('Describe the functional requirement.');
   const id = nextFr(b), after = b.gate > 2, sys = document.getElementById('fr-sys').value;
   br.frs.push({id, d, sys, cx:document.getElementById('fr-cx').value, st: after ? 'Change Requested' : 'Draft', author:PEOPLE.ba});
-  log(PEOPLE.ba, 'Functional requirement created', `${b.id} / ${br.id} / ${id}`, `${after ? 'Change control opened' : 'Draft'}; awaiting ${SYSOWN[sys] || PEOPLE.sysown} (System Owner)`);
+  log(PEOPLE.ba, 'Functional requirement created', `${b.id} / ${br.id} / ${id}`, `${after ? 'Change control opened' : 'Draft'}; awaiting ${sysOwner(sys)} (System Owner)`);
   if (OK_BR.includes(br.status)){ br.status = 'Change Requested'; log('svc-reqgov (flow F3)', 'BR reopened', `${b.id} / ${br.id}`, `New FR ${id} is pending; BR needs re-approval after it is approved`); }
   state.form = null; toast(`${id} added under ${br.id}`); render();
 }
@@ -702,7 +742,7 @@ function vDetail(){
   const fl = state.flash;
 
   const decision = b.gate === 7
-    ? `<div class="decision"><h3>Closed</h3><p class="muted">All gates approved and the post-implementation review is complete. Records in this BCR are locked and its Document Set is declared a record.</p></div>`
+    ? `<div class="decision"><h3>Closed</h3><p class="muted">All levels approved and the post-implementation review is complete. Records in this BCR are locked and its Document Set is declared a record.</p></div>`
     : `<form class="decision" id="decide" novalidate>
         <div><div class="label">Awaiting ${GATES[b.gate].code}</div><h3 style="margin-top:2px">${GATES[b.gate].name}</h3><p class="muted" style="font-size:.85rem;margin-top:2px">Approvers: ${GATES[b.gate].who}</p></div>
         <div><div class="label" style="margin-bottom:6px">Entry criteria (checked by flow)</div><ul class="criteria">
@@ -721,7 +761,7 @@ function vDetail(){
       <td style="min-width:190px"><div class="cellstack">${r.tcs.map(t => `<span title="${esc(t.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" class="linkbtn idref" data-act="tc" data-kind="tc-view" data-br="${r.id}" data-tc="${t.id}">${t.id}</button>${t.ds !== 'Approved' ? pill('Design ' + t.ds.toLowerCase(), t.ds === 'Rejected' ? 'crit' : '') : ''}${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}${tcCan(b) && !state.form ? `<button class="btn link small" type="button" data-act="tc" data-kind="tc-add" data-br="${r.id}" style="justify-self:start">+ Add test</button>` : ''}</div></td>
       <td>${b.uat ? `<span class="idref">${b.uat.id}</span><br>${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'')}` : '<span class="muted">—</span>'}</td>
       <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
-    </tbody></table></div>` : `<p class="empty">${canEdit ? 'No business requirements yet. Add the first one to start the G2 baseline.' : 'No business requirements yet. They are written once the BCR passes G1.'}</p>`;
+    </tbody></table></div>` : `<p class="empty">${canEdit ? 'No business requirements yet. Add the first one to start Level L2.' : 'No business requirements yet. They are written once the BCR passes L1.'}</p>`;
 
   const kv = obj => `<div class="kv">${Object.entries(obj).map(([k,v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>`;
   return `
@@ -739,7 +779,7 @@ function vDetail(){
       <div><dt>Created</dt><dd>${fmtDate(b.created)}</dd></div>
     </dl>
   </section>
-  <ol class="stepper" aria-label="Gate progress">${steps}</ol>
+  <ol class="stepper" aria-label="Level progress">${steps}</ol>
   <div class="two">
     <section class="panel" style="display:grid;gap:14px"><header style="margin:0"><div><h2>Traceability matrix</h2><span class="muted" style="font-size:.8rem">${b.brs.length} BRs · ${b.brs.reduce((n,r)=>n+r.frs.length,0)} FRs · ${tcsAll.length} tests</span></div>${canEdit && !state.form ? '<button class="btn" type="button" data-act="addbr">+ Add business requirement</button>' : ''}</header>${reqForm(b)}${rtm}</section>
     ${decision}
@@ -750,22 +790,22 @@ function vDetail(){
     ${chgCard(b)}
   </div>
   ${saForm(b)}${uatForm(b)}${chgForm(b)}
-  <section class="panel"><header><h2>Record history</h2><span class="muted" style="font-size:.8rem">From the Gate Decisions Log and item versions</span></header>
-    ${hist.length ? `<ul class="timeline">${hist.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br><span class="trace">${esc(a.rec)}</span> · ${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty">No entries yet.</p>'}
-  </section>`;
+  <details class="panel history" ${state.histOpen ? 'open' : ''}><summary><h2>Record history</h2><span class="muted" style="font-size:.85rem">${hist.length} ${hist.length === 1 ? 'entry' : 'entries'}</span></summary>
+    <div style="margin-top:14px">${hist.length ? `<ul class="timeline">${hist.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br><span class="trace">${esc(a.rec)}</span> · ${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty">No entries yet.</p>'}</div>
+  </details>`;
 }
 
 /* ---------- Level 4: solution assessment ---------- */
 const SA_AUTHOR = 'Rashid Isa';
-const SA_TYPES = ['Configuration','In-house Development','Vendor Package','Integration','Hybrid'];
 const SA_DONE = ['Approved','Approved with Conditions'];
 function saReviewers(sa){
   const r = [{role:'Enterprise Architecture (ARB)', who:PEOPLE.arb}, {role:'Information Security', who:PEOPLE.infosec}];
   if (sa.vendor !== 'None') r.push({role:'Third-Party Risk', who:'Dana Mattar'});
-  if (sa.risk === 'High' || sa.risk === 'Critical') r.push({role:'Operational Risk', who:'Fadhel Mahdi'});
+  if (listAttr('risk', sa.risk, 'oprisk')) r.push({role:'Operational Risk', who:'Fadhel Mahdi'});
   return r;
 }
 function normalize(db){
+  DB = db; if (!db.lists) db.lists = buildLists();
   db.bcrs.forEach(b => {
     b.brs.forEach(r => r.tcs.forEach(t => Object.assign(t, {ds:t.ds || 'Approved', type:t.type || 'SIT', author:t.author || 'Omar Saleh', on:t.on || (t.by ? '2026-10-08' : null), defect:t.defect || ''})));
     b.tcSeq = maxNum(b.brs.flatMap(r => r.tcs.map(t => t.id)));
@@ -797,7 +837,7 @@ const saCanChange = b => isOpen(b) && b.gate >= 2 && b.gate <= 4;
 function saCard(b){
   const sa = b.sa, busy = !!state.form;
   const head = '<div class="label">Level 4 · Solution assessment</div>';
-  if (!sa) return `<section class="card">${head}<p class="empty">${saCanChange(b) ? 'No assessment yet. It must be approved before G4.' : b.gate < 2 ? 'Raised once the BCR is approved at G1.' : 'No assessment recorded.'}</p>
+  if (!sa) return `<section class="card">${head}<p class="empty">${saCanChange(b) ? 'No assessment yet. It must be approved before L4.' : b.gate < 2 ? 'Raised once the BCR is approved at L1.' : 'No assessment recorded.'}</p>
     ${saCanChange(b) && !busy ? '<button class="btn" type="button" data-act="sa" data-kind="sa-add" style="justify-self:start">+ Add solution assessment</button>' : ''}</section>`;
   const kind = sa.status === 'Approved' ? 'good' : sa.status === 'Rejected' ? 'crit' : sa.status === 'Draft' ? '' : 'accent';
   const btns = [];
@@ -828,32 +868,32 @@ function saForm(b){
     const ap = sa.approvals[Number(f.role)];
     return `<form class="inline-form form-grid" id="sareview" novalidate>
       <div class="full"><div class="label">Review solution assessment · ${esc(ap.role)}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${sa.id}</span></h3>
-        <p class="muted" style="font-size:.85rem;margin-top:4px">${esc(sa.atype)}, ${esc(sa.vendor.toLowerCase())} vendor involvement, ${esc(sa.risk.toLowerCase())} risk, ${sa.effort} person-days. Every reviewer must approve before G4.</p></div>
+        <p class="muted" style="font-size:.85rem;margin-top:4px">${esc(sa.atype)}, ${esc(sa.vendor.toLowerCase())} vendor involvement, ${esc(sa.risk.toLowerCase())} risk, ${sa.effort} person-days. Every reviewer must approve before L4.</p></div>
       <div class="field"><label for="rv-who">Decision recorded by</label><select id="rv-who">${[...new Set([ap.who, sa.author])].map(o => `<option>${esc(o)}</option>`).join('')}</select></div>
       <div class="field"><label for="rv-note">Comments or conditions</label><textarea id="rv-note" placeholder="Required for conditions or rejection"></textarea></div>
       ${err}<div class="actions full"><button class="btn primary" type="submit" data-decision="approve">Approve</button><button class="btn" type="submit" data-decision="conditions">Approve with conditions</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${cancel}</div></form>`;
   }
-  const v = sa && f.kind === 'sa-edit' ? sa : {systems:[...b.systems], vendor:'None', vname:'', atype:'Configuration', approach:'', risk:'Medium', effort:''};
+  const v = sa && f.kind === 'sa-edit' ? sa : {systems:[...b.systems], vendor:'None', vname:'', atype:L('approach')[0], approach:'', risk:L('risk')[1] || L('risk')[0], effort:''};
   const id = f.kind === 'sa-edit' ? sa.id : 'SA-' + pad3(b.saSeq + 1);
-  const allSys = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+  const allSys = [...b.systems, ...L('systems').filter(s => !b.systems.includes(s))];
   const warn = f.kind === 'sa-edit' && sa.status !== 'Draft' ? `<p class="muted" style="font-size:.85rem;margin-top:4px">This assessment is ${sa.status.toLowerCase()}. Saving a change returns it to Draft, clears the approvals, and it must be submitted again.</p>` : '';
   return `<form class="inline-form form-grid" id="saedit" novalidate>
     <div class="full"><div class="label">${f.kind === 'sa-edit' ? 'Edit' : 'New'} solution assessment</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${id}</span></h3>${warn}</div>
     <fieldset class="field full" style="border:0;padding:0;margin:0"><legend style="font-size:.8rem;font-weight:600;margin-bottom:4px">Impacted systems</legend>
       <div class="checks">${allSys.map((s,i) => `<label><input type="checkbox" id="sa-sys-${i}" value="${esc(s)}" ${v.systems.includes(s)?'checked':''}> ${esc(s)}</label>`).join('')}</div></fieldset>
-    <div class="field"><label for="sa-vendor">Vendor involvement</label><select id="sa-vendor">${['None','Existing Vendor','New Vendor'].map(o => `<option ${o===v.vendor?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label for="sa-vendor">Vendor involvement</label><select id="sa-vendor">${L('vendor').map(o => `<option ${o===v.vendor?'selected':''}>${o}</option>`).join('')}</select></div>
     <div class="field"><label for="sa-vname">Vendor name</label><input id="sa-vname" value="${esc(v.vname || '')}" placeholder="Required when a vendor is involved"></div>
-    <div class="field"><label for="sa-atype">Implementation approach</label><select id="sa-atype">${SA_TYPES.map(o => `<option ${o===v.atype?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label for="sa-atype">Implementation approach</label><select id="sa-atype">${L('approach').map(o => `<option ${o===v.atype?'selected':''}>${o}</option>`).join('')}</select></div>
     <div class="field"><label for="sa-effort">Estimated effort (person-days)</label><input id="sa-effort" type="number" min="1" step="1" value="${esc(v.effort)}"></div>
-    <div class="field"><label for="sa-risk">Risk rating</label><select id="sa-risk">${['Low','Medium','High','Critical'].map(o => `<option ${o===v.risk?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label for="sa-risk">Risk rating</label><select id="sa-risk">${L('risk').map(o => `<option ${o===v.risk?'selected':''}>${o}</option>`).join('')}</select></div>
     <div class="field full"><label for="sa-approach">Approach description and key risks</label><textarea id="sa-approach" placeholder="How the solution will be delivered, dependencies, and the main architectural risks">${esc(v.approach || '')}</textarea></div>
-    <p class="muted full" style="font-size:.82rem">Reviewers: ARB and Information Security always; Third-Party Risk when a vendor is involved; Operational Risk when risk is High or Critical.</p>
+    <p class="muted full" style="font-size:.82rem">Reviewers: ARB and Information Security always; Third-Party Risk when a vendor is involved; Operational Risk when risk is ${esc(L('risk').filter(r => listAttr('risk', r, 'oprisk')).join(' or ') || 'flagged in Admin')}.</p>
     ${err}<div class="actions full"><button class="btn primary" type="submit">${f.kind === 'sa-edit' ? 'Save changes' : 'Save as draft'}</button>${cancel}</div></form>`;
 }
 
 function saSave(){
   const b = getBcr(state.bcr), f = state.form, v = id => document.getElementById(id).value.trim();
-  const allSys = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
+  const allSys = [...b.systems, ...L('systems').filter(s => !b.systems.includes(s))];
   const systems = allSys.filter((s,i) => document.getElementById('sa-sys-'+i).checked);
   const next = {systems, vendor:v('sa-vendor'), vname:v('sa-vendor') === 'None' ? '' : v('sa-vname'), atype:v('sa-atype'), approach:v('sa-approach'), risk:v('sa-risk'), effort:Number(v('sa-effort'))};
   const miss = [];
@@ -897,7 +937,7 @@ function saReview(decision){
   if (ap.role.startsWith('Information')) sa.sec = ap.st === 'Rejected' ? 'Not cleared' : ap.st === 'Approved' ? 'Cleared' : 'Cleared with Conditions';
   if (ap.role.startsWith('Enterprise')) sa.arch = ap.st;
   if (ap.st === 'Rejected'){ sa.status = 'Rejected'; log('svc-reqgov (flow F5)', 'Assessment rejected', `${b.id} / ${sa.id}`, `Rejected by ${ap.role}; author must revise and resubmit`); }
-  else if (sa.approvals.every(x => SA_DONE.includes(x.st))){ sa.status = 'Approved'; log('svc-reqgov (flow F5)', 'Assessment approved', `${b.id} / ${sa.id}`, `All ${sa.approvals.length} reviewers approved; ready for G4`); }
+  else if (sa.approvals.every(x => SA_DONE.includes(x.st))){ sa.status = 'Approved'; log('svc-reqgov (flow F5)', 'Assessment approved', `${b.id} / ${sa.id}`, `All ${sa.approvals.length} reviewers approved; ready for L4`); }
   state.form = null; toast(`${sa.id}: ${ap.role} ${ap.st.toLowerCase()}`); render();
 }
 
@@ -952,14 +992,14 @@ function tcForm(b){
     const v = tc || {d:'', type:'SIT'};
     const warn = tc && (tc.ds !== 'Draft' || tc.r !== 'Not Run') ? '<p class="muted full" style="font-size:.85rem">Saving a change returns the design to Draft for QA Lead re-approval and resets the result to Not Run.</p>' : '';
     return shell('tcedit', `${tc ? 'Edit' : 'New'} test case for ${br.id}`, `<span class="idref">${trace}</span>`,
-      `${warn}${fld('tc-desc','Test steps and expected result', `<textarea id="tc-desc" placeholder="Steps, test data and the expected result">${esc(v.d)}</textarea>`, true)}${fld('tc-type','Test type', sel('tc-type',['SIT','UAT','Regression','Security','Performance'], v.type))}`,
+      `${warn}${fld('tc-desc','Test steps and expected result', `<textarea id="tc-desc" placeholder="Steps, test data and the expected result">${esc(v.d)}</textarea>`, true)}${fld('tc-type','Test type', sel('tc-type',L('testTypes'), v.type))}`,
       `<button class="btn primary" type="submit">${tc ? 'Save changes' : 'Save as draft'}</button>${CANCEL}`);
   }
   if (f.kind === 'tc-review') return shell('tcreview', 'Approve test case design', `<span class="idref">${trace}</span>`,
     `<p class="full">${esc(tc.d)}</p>${fld('rv-who','Decision recorded by', sel('rv-who', [...new Set([QA_LEAD, tc.author])], QA_LEAD))}${fld('rv-note','Comments', '<textarea id="rv-note" placeholder="Required when rejecting"></textarea>')}`,
     `<button class="btn primary" type="submit" data-decision="approve">Approve design</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${CANCEL}`);
   if (f.kind === 'tc-result') return shell('tcresult', 'Record test result', `<span class="idref">${trace}</span>`,
-    `<p class="full">${esc(tc.d)}</p>${fld('tc-r','Result', sel('tc-r',['Pass','Fail','Blocked'], 'Pass'))}${fld('tc-by','Executed by', sel('tc-by', TESTERS, tc.by || TESTERS[0]))}
+    `<p class="full">${esc(tc.d)}</p>${fld('tc-r','Result', sel('tc-r',L('testResults'), 'Pass'))}${fld('tc-by','Executed by', sel('tc-by', TESTERS, tc.by || TESTERS[0]))}
      ${fld('tc-defect','Defect reference', `<input id="tc-defect" placeholder="Required when the test fails, e.g. DEF-1042" value="${esc(tc.defect || '')}">`)}${fld('tc-note','Notes', '<textarea id="tc-note" placeholder="Optional"></textarea>')}`,
     `<button class="btn primary" type="submit">Save result</button>${CANCEL}`);
   if (f.kind === 'tc-del') return delPanel(`Delete ${trace}?`, 'The test case is moved to the site recycle bin. The deletion stays in the audit log and its ID is not reused.');
@@ -1010,7 +1050,7 @@ function tcResult(){
 const uatCanAdd = b => isOpen(b) && b.gate >= 3 && b.gate <= 5 && !b.uat;
 function uatCard(b){
   const u = b.uat, head = '<div class="label">Level 5 · UAT sign-off</div>', all = b.brs.flatMap(r => r.tcs);
-  if (!u) return `<section class="card">${head}<p class="empty">${uatCanAdd(b) ? 'No UAT planned yet. It must be signed off before G5.' : b.gate < 3 ? 'Planned once the requirements are approved.' : 'No UAT recorded.'}</p>
+  if (!u) return `<section class="card">${head}<p class="empty">${uatCanAdd(b) ? 'No UAT planned yet. It must be signed off before L5.' : b.gate < 3 ? 'Planned once the requirements are approved.' : 'No UAT recorded.'}</p>
     ${uatCanAdd(b) && !anyForm() ? '<button class="btn" type="button" data-act="sa" data-kind="uat-add" style="justify-self:start">+ Plan UAT</button>' : ''}</section>`;
   const kind = u.status === 'Signed Off' ? 'good' : u.status === 'Rejected' ? 'crit' : u.status === 'Pending Sign-Off' ? 'warn' : 'accent';
   const live = isOpen(b) && b.gate <= 5 && !anyForm(), B = (act, kind, label, cls = '') => `<button class="btn small ${cls}" type="button" data-act="${act}" ${kind ? `data-kind="${kind}"` : ''}>${label}</button>`;
@@ -1101,8 +1141,9 @@ function uatReview(decision){
 /* ---------- Level 6: change request ---------- */
 const CHG_AUTHOR = 'Ahmed Fakhro', CAB_CHAIR = 'Jaffar Al-Mahroos';
 function chgReviewers(type){
-  if (type === 'Standard') return [{role:'Change Manager', who:PEOPLE.chg}];
-  if (type === 'Emergency') return [{role:'Emergency CAB (ECAB)', who:CAB_CHAIR}];
+  const route = chgRoute(type);
+  if (route === 'cm') return [{role:'Change Manager', who:PEOPLE.chg}];
+  if (route === 'ecab') return [{role:'Emergency CAB (ECAB)', who:CAB_CHAIR}];
   return [{role:'Change Manager', who:PEOPLE.chg}, {role:'Change Advisory Board (CAB)', who:CAB_CHAIR}];
 }
 const chgCanAdd = b => isOpen(b) && b.gate >= 5 && !b.chg;
@@ -1115,7 +1156,7 @@ function chgCard(b){
   const live = isOpen(b) && !anyForm(), B = (act, k, label, cls = '') => `<button class="btn small ${cls}" type="button" data-act="${act}" ${k ? `data-kind="${k}"` : ''}>${label}</button>`;
   const btns = [];
   if (live){
-    if (c.status === 'Draft' || c.status === 'Rejected') btns.push(B('sa','chg-edit','Edit'), B('chgsubmit','', c.type === 'Emergency' ? 'Submit to ECAB' : 'Submit for approval','primary'), B('sa','chg-del','Delete','danger'));
+    if (c.status === 'Draft' || c.status === 'Rejected') btns.push(B('sa','chg-edit','Edit'), B('chgsubmit','', isEmergency(c.type) ? 'Submit to ECAB' : 'Submit for approval','primary'), B('sa','chg-del','Delete','danger'));
     if (c.status === 'Submitted') btns.push(B('sa','chg-edit','Edit'));
     if (c.status === 'Approved' && c.deploy !== 'Deployed') btns.push(B('sa','chg-deploy','Record deployment','primary'));
     if (c.status === 'Approved' && c.deploy === 'Deployed' && c.pir === 'Due') btns.push(B('sa','chg-pir','Record PIR','primary'));
@@ -1140,19 +1181,19 @@ function chgForm(b){
        ${fld('rv-who','Decision recorded by', sel('rv-who', [...new Set([ap.who, c.author])], ap.who))}${fld('rv-note','Comments', '<textarea id="rv-note" placeholder="Required when rejecting"></textarea>')}`,
       `<button class="btn primary" type="submit" data-decision="approve">Approve</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${CANCEL}`); }
   if (f.kind === 'chg-deploy') return shell('chgdeploy', 'Record deployment', `<span class="idref">${b.id} / ${c.id}</span>`,
-    `${fld('dp-outcome','Outcome', sel('dp-outcome', ['Deployed','Failed','Rolled Back'], 'Deployed'))}${fld('dp-date','Deployment date', `<input id="dp-date" type="date" value="${TODAY}">`)}${fld('dp-note','Notes', '<textarea id="dp-note" placeholder="Required if the deployment failed or was rolled back"></textarea>', true)}`,
+    `${fld('dp-outcome','Outcome', sel('dp-outcome', L('deployOutcomes'), 'Deployed'))}${fld('dp-date','Deployment date', `<input id="dp-date" type="date" value="${TODAY}">`)}${fld('dp-note','Notes', '<textarea id="dp-note" placeholder="Required if the deployment failed or was rolled back"></textarea>', true)}`,
     `<button class="btn primary" type="submit">Save deployment</button>${CANCEL}`);
   if (f.kind === 'chg-pir') return shell('chgpir', 'Post-implementation review', `<span class="idref">${b.id} / ${c.id}</span>`,
-    `${fld('pir-outcome','Outcome', sel('pir-outcome', ['Successful','Issues Raised'], 'Successful'))}<div></div>${fld('pir-note','Findings and follow-up actions', '<textarea id="pir-note" placeholder="Benefits realised, incidents, lessons learned"></textarea>', true)}`,
+    `${fld('pir-outcome','Outcome', sel('pir-outcome', L('pirOutcomes'), 'Successful'))}<div></div>${fld('pir-note','Findings and follow-up actions', '<textarea id="pir-note" placeholder="Benefits realised, incidents, lessons learned"></textarea>', true)}`,
     `<button class="btn primary" type="submit">Complete PIR</button>${CANCEL}`);
-  const v = f.kind === 'chg-edit' ? c : {type:'Normal', risk:b.sa?.risk || 'Medium', release:addDays(TODAY, 14), window:'', rollback:''};
+  const v = f.kind === 'chg-edit' ? c : {type:L('chgType')[0], risk:b.sa?.risk || 'Medium', release:addDays(TODAY, 14), window:'', rollback:''};
   const warn = f.kind === 'chg-edit' && c.status === 'Submitted' ? '<p class="muted full" style="font-size:.85rem">This change is with its approvers. Saving returns it to Draft and clears the approvals.</p>' : '';
   return shell('chgedit', `${f.kind === 'chg-edit' ? 'Edit' : 'Raise'} change request`, `<span class="idref">${b.id} / ${f.kind === 'chg-edit' ? c.id : 'CHG-' + String(DB.chgCounter).padStart(5,'0')}</span>`,
     `${warn}${f.kind === 'chg-add' ? fld('chg-itsm','ITSM ticket number (optional)', '<input id="chg-itsm" placeholder="CHG-00000, or leave blank to issue one">') + '<div></div>' : ''}
-     ${fld('chg-type','Change type', sel('chg-type', ['Normal','Standard','Emergency'], v.type))}${fld('chg-risk','Risk level', sel('chg-risk', ['Low','Medium','High','Critical'], v.risk))}
+     ${fld('chg-type','Change type', sel('chg-type', L('chgType'), v.type))}${fld('chg-risk','Risk level', sel('chg-risk', L('risk'), v.risk))}
      ${fld('chg-release','Planned release date', `<input id="chg-release" type="date" value="${esc(v.release)}">`)}${fld('chg-window','Implementation window', `<input id="chg-window" value="${esc(v.window || '')}" placeholder="e.g. Fri 23:00–02:00">`)}
      ${fld('chg-rollback','Rollback plan', `<textarea id="chg-rollback" placeholder="How the change is reversed if it fails">${esc(v.rollback || '')}</textarea>`, true)}
-     <p class="muted full" style="font-size:.82rem">Approvals: Normal goes to the Change Manager, then CAB. Standard goes to the Change Manager only. Emergency goes to ECAB and may proceed before UAT sign-off.</p>`,
+     <p class="muted full" style="font-size:.82rem">Approval routes: ${L('chgType').map(t => `${esc(t)}: ${ROUTES[chgRoute(t)]}`).join('; ')}.</p>`,
     `<button class="btn primary" type="submit">${f.kind === 'chg-edit' ? 'Save changes' : 'Save as draft'}</button>${CANCEL}`);
 }
 function chgSave(){
@@ -1160,7 +1201,7 @@ function chgSave(){
   const next = {type:val('chg-type'), risk:val('chg-risk'), release:val('chg-release'), window:val('chg-window'), rollback:val('chg-rollback')};
   if (!next.release) return formError('Set the planned release date.');
   if (!next.rollback) return formError('Add the rollback plan.');
-  if (next.type !== 'Emergency' && !uatLocked(b)) return formError('UAT must be signed off before a Normal or Standard change. Use Emergency, approved by ECAB, for an urgent fix.');
+  if (!isEmergency(next.type) && !uatLocked(b)) return formError('UAT must be signed off before a Normal or Standard change. Use Emergency, approved by ECAB, for an urgent fix.');
   if (f.kind === 'chg-add'){
     const itsm = val('chg-itsm');
     if (itsm && !/^CHG-\d{5}$/.test(itsm)) return formError('Use the ITSM format CHG-00000, or leave it blank.');
@@ -1181,7 +1222,7 @@ function chgSave(){
 function chgSubmit(){
   const b = getBcr(state.bcr), c = b.chg; state.notice = null;
   if (!c.rollback){ state.notice = {where:'chg', ok:false, text:'Add a rollback plan before submitting.'}; return render(); }
-  if (c.type !== 'Emergency' && !uatLocked(b)){ state.notice = {where:'chg', ok:false, text:'UAT must be signed off first, or change the type to Emergency.'}; return render(); }
+  if (!isEmergency(c.type) && !uatLocked(b)){ state.notice = {where:'chg', ok:false, text:'UAT must be signed off first, or change the type to Emergency.'}; return render(); }
   Object.assign(c, {status:'Submitted', cab:'Pending', approvals: chgReviewers(c.type).map(r => ({...r, st:'Pending', note:''}))});
   log('svc-reqgov (flow F8)', 'Change submitted for approval', `${b.id} / ${c.id}`, `Routed to ${c.approvals.map(a => a.role).join(', then ')}`);
   toast(`${c.id} submitted`); render();
@@ -1236,7 +1277,7 @@ function pendingItems(){
 function vApprovals(){
   const q = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).sort((a,b) => (isBreach(b)-isBreach(a)) || b.gate - a.gate);
   const items = pendingItems();
-  return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Requirement decisions and gate decisions waiting on approvers. Approvers are resolved from the Approval Matrix list by system, business area and risk.</p></div></div>
+  return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Requirement decisions and level decisions waiting on approvers. Approvers are resolved from the Approval Matrix list by system, business area and risk.</p></div></div>
   <section style="display:grid;gap:10px"><h2>Requirement and assessment approvals <span class="muted" style="font-weight:400;font-size:.9rem">· ${items.length}</span></h2>
   <p class="muted" style="font-size:.85rem">System Owners approve each FR. Business Owners approve each BR, which unlocks only after all of its FRs are approved. Each solution assessment reviewer approves separately.</p>
   ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Request</th><th>Approver</th><th>State</th><th></th></tr></thead><tbody>
@@ -1251,12 +1292,12 @@ function vApprovals(){
       <td><button class="btn" type="button" data-act="review" data-kind="sa-review" data-id="${it.b.id}" data-role="${it.i}">Review</button></td></tr>`;
     const isFr = it.kind === 'rfr'; const pend = isFr ? 0 : it.r.frs.filter(f => !OK_FR.includes(f.st)).length; const ready = isFr || (it.r.frs.length && !pend);
     return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.r.id}${isFr ? ' / ' + it.f.id : ''}</span><b>${isFr ? 'FR' : 'BR'} · ${esc(isFr ? it.f.d : it.r.title)}</b></div></td>
-    <td>${esc(it.b.title)}</td><td>${esc(isFr ? (SYSOWN[it.f.sys] || PEOPLE.sysown) : it.r.owner)}<br><span class="muted" style="font-size:.8rem">${isFr ? 'System Owner · ' + esc(it.f.sys) : 'Business Owner'}</span></td>
+    <td>${esc(it.b.title)}</td><td>${esc(isFr ? (sysOwner(it.f.sys)) : it.r.owner)}<br><span class="muted" style="font-size:.8rem">${isFr ? 'System Owner · ' + esc(it.f.sys) : 'Business Owner'}</span></td>
     <td>${ready ? pill(isFr ? it.f.st : 'Ready to approve', isFr ? stKind(it.f.st) : 'accent') : pill(it.r.frs.length ? `Waiting on ${pend} FR${pend===1?'':'s'}` : 'No FRs yet', 'warn')}</td>
     <td><button class="btn" type="button" data-act="review" data-kind="${it.kind}" data-id="${it.b.id}" data-br="${it.r.id}" ${isFr ? `data-fr="${it.f.id}"` : ''}>Review</button></td></tr>`; }).join('')}
   </tbody></table></div>` : '<p class="empty">No requirements are waiting for approval.</p>'}</section>
-  <section style="display:grid;gap:10px"><h2>Gate decisions <span class="muted" style="font-weight:400;font-size:.9rem">· ${q.length}</span></h2>
-  <div class="tbl-wrap"><table><thead><tr><th>Gate</th><th>Request</th><th>Approvers</th><th>Waiting</th><th>SLA</th><th></th></tr></thead><tbody>
+  <section style="display:grid;gap:10px"><h2>Level decisions <span class="muted" style="font-weight:400;font-size:.9rem">· ${q.length}</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>Level</th><th>Request</th><th>Approvers</th><th>Waiting</th><th>SLA</th><th></th></tr></thead><tbody>
   ${q.map(b => { const g = GATES[b.gate]; const d = daysAtGate(b);
     return `<tr><td><span class="mono">${g.code}</span><br><b>${g.name}</b></td><td><span class="idref">${b.id}</span><br>${esc(b.title)}</td><td style="max-width:260px">${esc(g.who)}</td>
     <td class="num">${d} working day${d===1?'':'s'}</td><td>${isBreach(b) ? pill(`Breached (${g.sla}d)`, 'crit') : pill(`${g.sla - d} day${g.sla-d===1?'':'s'} left`, 'good')}</td>
@@ -1267,11 +1308,123 @@ function vApprovals(){
 function vAudit(){
   const f = state.auditFilter;
   const rows = DB.audit.filter(a => !f || a.rec.startsWith(f));
-  return `<div class="pagehead"><div><h1>Audit log</h1><p class="muted">Append-only Gate Decisions Log. Only the flow service account writes here; Internal Audit has read access. Purview audit search covers views, edits and permission changes on top of this.</p></div></div>
-  <div class="filters"><select id="f-audit" aria-label="Filter by request"><option value="">All requests</option>${DB.bcrs.map(b => `<option ${f===b.id?'selected':''}>${b.id}</option>`).join('')}</select><span class="muted">${rows.length} entries</span></div>
+  return `<div class="pagehead"><div><h1>Audit log</h1><p class="muted">Append-only Level Decisions Log. Only the flow service account writes here; Internal Audit has read access. Purview audit search covers views, edits and permission changes on top of this.</p></div></div>
+  <div class="filters"><select id="f-audit" aria-label="Filter by request"><option value="">All requests</option><option value="Admin" ${f==='Admin'?'selected':''}>Admin changes</option>${DB.bcrs.map(b => `<option ${f===b.id?'selected':''}>${b.id}</option>`).join('')}</select><span class="muted">${rows.length} entries</span></div>
   <div class="tbl-wrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record (trace key)</th><th>Detail</th></tr></thead><tbody>
   ${rows.map(a => `<tr><td class="num">${fmtTime(a.t)}</td><td>${esc(a.who)}</td><td><b>${esc(a.act)}</b></td><td class="trace">${esc(a.rec)}</td><td>${esc(a.det)}</td></tr>`).join('')}
   </tbody></table></div>`;
+}
+
+/* ---------- Admin: customisable dropdown lists ---------- */
+const ADMIN_USER = 'Platform Owner';
+function forEachField(key, cb){
+  DB.bcrs.forEach(b => {
+    const frs = b.brs.flatMap(r => r.frs), tcs = b.brs.flatMap(r => r.tcs);
+    ({
+      areas: () => cb(b, 'area'), bcrPriority: () => cb(b, 'priority'),
+      systems: () => { cb(b, 'systems'); frs.forEach(f => cb(f, 'sys')); if (b.sa) cb(b.sa, 'systems'); },
+      brPriority: () => b.brs.forEach(r => cb(r, 'pri')), complexity: () => frs.forEach(f => cb(f, 'cx')),
+      vendor: () => b.sa && cb(b.sa, 'vendor'), approach: () => b.sa && cb(b.sa, 'atype'),
+      risk: () => { if (b.sa) cb(b.sa, 'risk'); if (b.chg) cb(b.chg, 'risk'); },
+      testTypes: () => tcs.forEach(t => cb(t, 'type')), testResults: () => tcs.forEach(t => cb(t, 'r')),
+      chgType: () => b.chg && cb(b.chg, 'type'), deployOutcomes: () => b.chg && cb(b.chg, 'deploy'),
+      pirOutcomes: () => b.chg && cb(b.chg, 'pir', 'Completed – ')
+    })[key]();
+  });
+}
+function usage(key, v){
+  let n = 0;
+  forEachField(key, (o, p, pre = '') => { const cur = o[p]; if (Array.isArray(cur) ? cur.includes(v) : cur === pre + v) n++; });
+  return n;
+}
+function renameValue(key, from, to){
+  let n = 0;
+  forEachField(key, (o, p, pre = '') => {
+    const cur = o[p];
+    if (Array.isArray(cur)){ if (cur.includes(from)){ o[p] = cur.map(x => x === from ? to : x); n++; } }
+    else if (cur === pre + from){ o[p] = pre + to; n++; }
+  });
+  return n;
+}
+function adminError(t){ state.adminMsg = {ok:false, text:t}; render(); }
+function adminDone(t){ state.adminMsg = {ok:true, text:t}; toast(t); render(); }
+
+function vAdmin(){
+  const keys = Object.keys(DB.lists), key = state.adminList && DB.lists[state.adminList] ? state.adminList : keys[0], list = DB.lists[key];
+  const m = state.adminMsg;
+  const attrHead = {owner:'System Owner', oprisk:'Operational Risk review', route:'Approval route'}[list.attr];
+  const attrCell = (x, i) => list.attr === 'owner' ? `<input id="adm-o-${i}" data-adm="owner" data-i="${i}" value="${esc(x.owner || '')}" aria-label="System Owner for ${esc(x.v)}">`
+    : list.attr === 'oprisk' ? `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="adm-r-${i}" data-adm="oprisk" data-i="${i}" ${x.oprisk ? 'checked' : ''}> Required</label>`
+    : list.attr === 'route' ? `<select id="adm-t-${i}" data-adm="route" data-i="${i}" aria-label="Approval route for ${esc(x.v)}">${Object.entries(ROUTES).map(([k, l]) => `<option value="${k}" ${x.route === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : '';
+  const newAttr = list.attr === 'owner' ? fld('adm-new-o', 'System Owner', '<input id="adm-new-o" placeholder="Name">')
+    : list.attr === 'oprisk' ? `<label style="display:flex;gap:6px;align-items:center;align-self:end;padding-bottom:8px"><input type="checkbox" id="adm-new-r"> Operational Risk review</label>`
+    : list.attr === 'route' ? fld('adm-new-t', 'Approval route', `<select id="adm-new-t">${Object.entries(ROUTES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>`) : '';
+  return `<div class="pagehead"><div><h1>Admin</h1><p class="muted">Customise the values offered in every dropdown. Renaming a value updates every record that uses it. A value in use cannot be removed. Every change is written to the audit log.</p></div></div>
+  <div class="admin">
+    <nav class="adminnav" aria-label="Dropdown lists">${keys.map(k => `<button type="button" data-act="admlist" data-key="${k}" ${k === key ? 'aria-current="true"' : ''}><span>${esc(DB.lists[k].label)}</span><span class="muted">${DB.lists[k].values.length}</span></button>`).join('')}</nav>
+    <section class="panel" style="display:grid;gap:14px;align-content:start">
+      <header style="margin:0;display:block"><h2>${esc(list.label)}</h2><p class="muted" style="font-size:.85rem;margin-top:4px">Used in: ${esc(list.where)}</p></header>
+      ${m ? `<div class="msg ${m.ok ? 'ok' : 'err'}" role="status">${esc(m.text)}</div>` : ''}
+      <div class="tbl-wrap"><table><thead><tr><th>Order</th><th>Value</th>${attrHead ? `<th>${attrHead}</th>` : ''}<th>In use</th><th></th></tr></thead><tbody>
+      ${list.values.map((x, i) => { const locked = list.locked.includes(x.v), n = usage(key, x.v);
+        return `<tr><td class="num">${i + 1}</td>
+          <td style="min-width:180px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="adm-v-${i}" data-adm="rename" data-i="${i}" value="${esc(x.v)}" ${locked ? 'disabled' : ''} aria-label="Value ${i + 1}" style="flex:1 1 140px;min-width:0">${locked ? '<span class="pill plain" title="Drives a workflow rule">Workflow value</span>' : ''}</div></td>
+          ${attrHead ? `<td style="min-width:170px">${attrCell(x, i)}</td>` : ''}
+          <td class="num">${n} record${n === 1 ? '' : 's'}</td>
+          <td style="white-space:nowrap"><button class="btn small" type="button" data-act="admmove" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+            <button class="btn small" type="button" data-act="admmove" data-i="${i}" data-d="1" ${i === list.values.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+            <button class="btn small danger" type="button" data-act="admdel" data-i="${i}" ${locked || n ? `disabled title="${locked ? 'Workflow value' : 'In use'}"` : ''}>Remove</button></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <form id="admadd" class="form-grid" novalidate style="align-items:end">
+        ${fld('adm-new', 'Add a value', '<input id="adm-new" placeholder="New value">')}${newAttr}
+        <div class="actions"><button class="btn primary" type="submit">Add value</button></div>
+      </form>
+      ${list.locked.length ? `<p class="muted" style="font-size:.82rem">Workflow values (${list.locked.map(esc).join(', ')}) drive approval rules, so they can't be renamed or removed.</p>` : ''}
+    </section>
+  </div>`;
+}
+function adminChange(el){
+  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], i = Number(el.dataset.i), x = list.values[i], rec = `Admin / ${list.label}`;
+  if (el.dataset.adm === 'rename'){
+    const to = el.value.trim(), from = x.v;
+    if (to === from) return;
+    if (!to) return adminError('A value cannot be empty.');
+    if (list.values.some((y, j) => j !== i && y.v.toLowerCase() === to.toLowerCase())) return adminError(`"${to}" is already in this list.`);
+    x.v = to; const n = renameValue(key, from, to);
+    log(ADMIN_USER, 'List value renamed', rec, `${from} → ${to}; ${n} record${n === 1 ? '' : 's'} updated`);
+    return adminDone(`Renamed to "${to}" and updated ${n} record${n === 1 ? '' : 's'}`);
+  }
+  if (el.dataset.adm === 'owner'){
+    const to = el.value.trim(); if (!to) return adminError('Enter the System Owner’s name.');
+    const from = x.owner; x.owner = to; log(ADMIN_USER, 'System Owner changed', rec, `${x.v}: ${from || '—'} → ${to}`); return adminDone(`${x.v} System Owner set to ${to}`);
+  }
+  if (el.dataset.adm === 'oprisk'){ x.oprisk = el.checked; log(ADMIN_USER, 'Review rule changed', rec, `${x.v}: Operational Risk review ${x.oprisk ? 'required' : 'not required'}`); return adminDone(`Updated ${x.v}`); }
+  if (el.dataset.adm === 'route'){ x.route = el.value; log(ADMIN_USER, 'Approval route changed', rec, `${x.v}: ${ROUTES[x.route]}`); return adminDone(`${x.v} now routes to ${ROUTES[x.route]}`); }
+}
+function adminAction(act, t){
+  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], rec = `Admin / ${list.label}`;
+  if (act === 'admlist'){ state.adminList = t.dataset.key; state.adminMsg = null; return render(); }
+  const i = Number(t.dataset.i), x = list.values[i];
+  if (act === 'admmove'){ const j = i + Number(t.dataset.d); if (j < 0 || j >= list.values.length) return;
+    [list.values[i], list.values[j]] = [list.values[j], list.values[i]]; log(ADMIN_USER, 'List reordered', rec, `${x.v} moved to position ${j + 1}`); state.adminMsg = null; return render(); }
+  if (act === 'admdel'){
+    if (list.locked.includes(x.v)) return adminError(`${x.v} drives a workflow rule and can't be removed.`);
+    const n = usage(key, x.v); if (n) return adminError(`${x.v} is used by ${n} record${n === 1 ? '' : 's'}. Rename it, or change those records first.`);
+    if (list.values.length === 1) return adminError('A list needs at least one value.');
+    list.values.splice(i, 1); log(ADMIN_USER, 'List value removed', rec, x.v); return adminDone(`Removed "${x.v}"`);
+  }
+}
+function adminAdd(){
+  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], v = val('adm-new');
+  if (!v) return adminError('Type the value to add.');
+  if (list.values.some(y => y.v.toLowerCase() === v.toLowerCase())) return adminError(`"${v}" is already in this list.`);
+  const item = {v};
+  if (list.attr === 'owner'){ item.owner = val('adm-new-o'); if (!item.owner) return adminError('Enter the System Owner for the new system.'); }
+  if (list.attr === 'oprisk') item.oprisk = document.getElementById('adm-new-r').checked;
+  if (list.attr === 'route') item.route = val('adm-new-t');
+  list.values.push(item);
+  log(ADMIN_USER, 'List value added', `Admin / ${list.label}`, `${v}${item.owner ? ' (owner ' + item.owner + ')' : ''}${item.route ? ' · ' + ROUTES[item.route] : ''}${item.oprisk ? ' · Operational Risk review' : ''}`);
+  adminDone(`Added "${v}" to ${list.label}`);
 }
 
 function vFramework(){
@@ -1283,17 +1436,17 @@ function vFramework(){
     ['L5','Testing & UAT','Test Cases · UAT Sign-Offs','Test cases linked to BRs and the business acceptance sign-off.','Test Case ID, Related BR, Description, Result · UAT ID, Parent BCR, Business Owner, UAT Result, Sign-Off Date, Status'],
     ['L6','Change Request','Change Requests','Release management, deployment and post-implementation review.','Change ID, Related BCR, Change Type, Risk Level, CAB Approval, Planned Release Date, Deployment Status, Post Implementation Review']
   ];
-  return `<div class="pagehead"><div><h1>Framework</h1><p class="muted">The six-level traceability model and the gates that connect it. Each level is a SharePoint list in this site; each child record looks up to its parent.</p></div></div>
+  return `<div class="pagehead"><div><h1>Framework</h1><p class="muted">The six-level traceability model and the approval levels that connect it. Each level is a SharePoint list in this site; each child record looks up to its parent.</p></div></div>
   <section class="ref-levels">${L.map(l => `<article class="lvl"><span class="n">${l[0]} · list: ${esc(l[2])}</span><h3>${esc(l[1])}</h3><p>${esc(l[3])}</p><div class="fields"><span class="label">Fields</span><br>${esc(l[4])}</div></article>`).join('')}</section>
-  <section class="panel"><header><h2>Gate approval matrix</h2><span class="muted" style="font-size:.8rem">SLAs in working days, Sunday–Thursday</span></header>
-  <div class="tbl-wrap"><table><thead><tr><th>Gate</th><th>Decision</th><th>Approvers</th><th>SLA</th></tr></thead><tbody>
+  <section class="panel"><header><h2>Level approval matrix</h2><span class="muted" style="font-size:.8rem">SLAs in working days, Sunday–Thursday</span></header>
+  <div class="tbl-wrap"><table><thead><tr><th>Level</th><th>Decision</th><th>Approvers</th><th>SLA</th></tr></thead><tbody>
   ${GATES.map(g => `<tr><td class="mono">${g.code}</td><td><b>${g.name}</b></td><td>${esc(g.who)}</td><td class="num">${g.sla ? g.sla+' days' : 'Immediate'}</td></tr>`).join('')}
   </tbody></table></div></section>
   <section class="panel"><header><h2>Controls in this prototype</h2></header>
     <ul style="margin:0;padding-left:18px;display:grid;gap:6px;max-width:75ch">
       <li>Each functional requirement is approved on its own by the System Owner of its impacted system.</li>
       <li>Each business requirement is approved on its own by its Business Owner, and only once all of its FRs are approved. Adding an FR to an approved BR reopens it.</li>
-      <li>A gate approves only when its entry criteria pass, as the Power Automate flow would check them.</li>
+      <li>A level is approved only when its entry criteria pass, as the Power Automate flow would check them.</li>
       <li>Segregation of duties: a requestor cannot approve their own BCR, and a test executor cannot sign UAT.</li>
       <li>Every decision is written to the audit log with the approver, time and comments.</li>
       <li>UAT sign-off raises the change request automatically; CAB approval deploys and closes the BCR.</li>
@@ -1304,19 +1457,19 @@ function vNew(){
   const people = ['Ahmed Janahi','Fatima Al-Sayed','Zainab Mansoor','Khalid Rashed','Reem Bucheeri','Ebrahim Saad'];
   const fl = state.flash;
   return `<div class="crumbs"><button class="btn link" type="button" data-act="nav" data-view="register">BCR Register</button><span>›</span><span>New request</span></div>
-  <div class="pagehead"><div><h1>New business change request</h1><p class="muted">Submitting runs the G0 check. A BCR ID is issued and the request goes to the sponsor for G1 approval.</p></div></div>
+  <div class="pagehead"><div><h1>New business change request</h1><p class="muted">Submitting runs the L0 check. A BCR ID is issued and the request goes to the sponsor for L1 approval.</p></div></div>
   <form class="panel form-grid" id="newbcr" novalidate>
     <div class="field full"><label for="n-title">Title</label><input id="n-title" placeholder="For example: Salary advance in mobile app"></div>
-    <div class="field"><label for="n-area">Business area</label><select id="n-area">${AREAS.map(a=>`<option>${a}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-area">Business area</label><select id="n-area">${L('areas').map(a=>`<option>${a}</option>`).join('')}</select></div>
     <div class="field"><label for="n-domain">Domain</label><input id="n-domain" placeholder="For example: Lending"></div>
     <div class="field"><label for="n-req">Requestor</label><select id="n-req">${people.map(p=>`<option>${p}</option>`).join('')}</select></div>
     <div class="field"><label for="n-sp">Business sponsor</label><select id="n-sp">${people.map((p,i)=>`<option ${i===1?'selected':''}>${p}</option>`).join('')}</select></div>
-    <div class="field"><label for="n-pri">Priority</label><select id="n-pri">${['Critical','High','Medium','Low'].map(p=>`<option ${p==='Medium'?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-pri">Priority</label><select id="n-pri">${L('bcrPriority').map(p=>`<option ${p==='Medium'?'selected':''}>${esc(p)}</option>`).join('')}</select></div>
     <div class="field"><label for="n-target">Target go-live</label><input id="n-target" type="date" value="2027-03-31"></div>
     <fieldset class="field full" style="border:0;padding:0;margin:0"><legend style="font-size:.8rem;font-weight:600;margin-bottom:4px">Impacted systems</legend>
-      <div class="checks">${SYSTEMS.map((s,i)=>`<label><input type="checkbox" id="n-sys-${i}" value="${s}"> ${s}</label>`).join('')}</div></fieldset>
+      <div class="checks">${L('systems').map((s,i)=>`<label><input type="checkbox" id="n-sys-${i}" value="${s}"> ${s}</label>`).join('')}</div></fieldset>
     <div class="field full"><label for="n-just">Business justification</label><textarea id="n-just" placeholder="The business driver, expected benefit and any regulatory obligation"></textarea></div>
-    <label class="full" style="display:flex;gap:8px;align-items:center;font-size:.88rem"><input type="checkbox" id="n-reg"> Driven by a regulatory requirement (adds Compliance to G1)</label>
+    <label class="full" style="display:flex;gap:8px;align-items:center;font-size:.88rem"><input type="checkbox" id="n-reg"> Driven by a regulatory requirement (adds Compliance to L1)</label>
     ${fl ? `<div class="msg err full" role="alert">${esc(fl.text)}</div>` : ''}
     <div class="actions full"><button class="btn primary" type="submit">Submit request</button><button class="btn" type="button" data-act="nav" data-view="register">Cancel</button></div>
   </form>`;
@@ -1328,7 +1481,7 @@ function decide(kind){
   const g = GATES[b.gate];
   if (kind === 'return'){
     if (!note){ state.flash = {ok:false, text:'Add a comment so the owner knows what to fix.'}; return render(); }
-    b.returned = true; log(who, `Gate ${g.code} returned`, b.id, note);
+    b.returned = true; log(who, `Level ${g.code} returned`, b.id, note);
     state.flash = {ok:true, text:`Returned to the owner. The decision is logged.`}; toast(`${b.id} returned at ${g.code}`); return render();
   }
   if (b.gate === 1 && who === b.requestor){ state.flash = {ok:false, text:'Segregation of duties: the requestor cannot approve their own BCR. Choose the sponsor or Demand Manager.'}; log('svc-reqgov (flow F2)','Approval blocked', b.id, `${who} is the requestor`); return render(); }
@@ -1336,15 +1489,15 @@ function decide(kind){
   if (b.gate === 5 && executors.includes(who)){ state.flash = {ok:false, text:`Segregation of duties: ${who} executed test cases for this BCR and cannot sign UAT.`}; log('svc-reqgov (flow F7)','Sign-off blocked', b.id+' / '+(b.uat?.id||'UAT'), `${who} is a test executor`); return render(); }
   if (!approverOptions(b).expected.includes(who)){ state.flash = {ok:false, text:`${who} is not an approver for ${g.code} in the Approval Matrix.`}; return render(); }
   const failed = criteria(b).filter(c => !c.ok);
-  if (failed.length){ state.flash = {ok:false, text:`${g.code} cannot be approved yet: ${failed.map(c=>c.t.toLowerCase()).join('; ')}.`}; log('svc-reqgov (flow)', 'Gate entry check failed', b.id, failed.map(c=>c.t).join('; ')); return render(); }
+  if (failed.length){ state.flash = {ok:false, text:`${g.code} cannot be approved yet: ${failed.map(c=>c.t.toLowerCase()).join('; ')}.`}; log('svc-reqgov (flow)', 'Level entry check failed', b.id, failed.map(c=>c.t).join('; ')); return render(); }
 
   b.returned = false;
-  log(who, `Gate ${g.code} approved`, b.id, note || g.name + ' approved');
+  log(who, `Level ${g.code} approved`, b.id, note || g.name + ' approved');
   if (b.gate === 3) b.brs.forEach(r => { r.status = 'Baselined'; });
   if (b.gate === 5){
     b.brs.forEach(r => r.status = 'Verified');
     if (!b.chg){ const id = 'CHG-' + String(DB.chgCounter++).padStart(5,'0');
-      b.chg = {id, type:'Normal', risk:b.sa?.risk || 'Medium', release:addDays(TODAY,14), window:'', rollback:'', status:'Draft', cab:'Not Submitted', deploy:'Not Scheduled', pir:'Not Due', approvals:[], author:CHG_AUTHOR, ver:1};
+      b.chg = {id, type:(L('chgType').find(t => chgRoute(t) === 'cm-cab') || L('chgType')[0]), risk:b.sa?.risk || L('risk')[0], release:addDays(TODAY,14), window:'', rollback:'', status:'Draft', cab:'Not Submitted', deploy:'Not Scheduled', pir:'Not Due', approvals:[], author:CHG_AUTHOR, ver:1};
       log('svc-reqgov (flow F8)','Change request created', `${b.id} / ${id}`, 'Draft Normal change; add the rollback plan and submit to CAB'); }
   }
   if (b.gate === 6) log('svc-reqgov (flow F9)','BCR closed', b.id, 'Change deployed, PIR completed, records locked');
@@ -1355,17 +1508,17 @@ function decide(kind){
 
 function submitNew(){
   const v = id => document.getElementById(id).value.trim();
-  const systems = SYSTEMS.filter((s,i) => document.getElementById('n-sys-'+i).checked);
+  const systems = L('systems').filter((s,i) => document.getElementById('n-sys-'+i).checked);
   const missing = [];
   if (!v('n-title')) missing.push('title'); if (!v('n-domain')) missing.push('domain');
   if (!systems.length) missing.push('at least one impacted system'); if (v('n-just').length < 20) missing.push('a business justification of 20 characters or more');
-  if (missing.length){ state.flash = {ok:false, text:`G0 check failed. Add ${missing.join(', ')}.`}; return render(); }
-  if (v('n-req') === v('n-sp')){ state.flash = {ok:false, text:'G0 check failed. The business sponsor must be a different person from the requestor.'}; return render(); }
+  if (missing.length){ state.flash = {ok:false, text:`L0 check failed. Add ${missing.join(', ')}.`}; return render(); }
+  if (v('n-req') === v('n-sp')){ state.flash = {ok:false, text:'L0 check failed. The business sponsor must be a different person from the requestor.'}; return render(); }
   const id = 'BCR-2026-' + String(++DB.counter).padStart(3,'0');
   DB.bcrs.unshift({id, title:v('n-title'), area:v('n-area'), domain:v('n-domain'), requestor:v('n-req'), sponsor:v('n-sp'), just:v('n-just'), systems,
     priority:v('n-pri'), gate:1, since:TODAY, reg:document.getElementById('n-reg').checked, target:v('n-target') || null, created:TODAY, brs:[], sa:null, uat:null, chg:null});
-  log('svc-reqgov (flow F1)','ID issued', id, 'G0 validation passed; status set to Submitted');
-  state.flash = null; toast(`${id} submitted for G1 approval`); go('detail', id);
+  log('svc-reqgov (flow F1)','ID issued', id, 'L0 validation passed; status set to Submitted');
+  state.flash = null; toast(`${id} submitted for L1 approval`); go('detail', id);
 }
 
 function scrollToForm(){ try { const el = document.querySelector('.inline-form'); if (el) el.scrollIntoView({block:'start', behavior:'smooth'}); } catch(e){} }
@@ -1374,7 +1527,7 @@ function toast(t){ const el = document.getElementById('toast'); el.textContent =
 
 function render(){
   renderTabs();
-  const v = {overview:vOverview, register:vRegister, detail:vDetail, approvals:vApprovals, audit:vAudit, framework:vFramework, new:vNew}[state.view] || vOverview;
+  const v = {overview:vOverview, register:vRegister, detail:vDetail, approvals:vApprovals, audit:vAudit, framework:vFramework, admin:vAdmin, new:vNew}[state.view] || vOverview;
   document.getElementById('app').innerHTML = v();
 }
 
@@ -1396,6 +1549,7 @@ document.addEventListener('click', e => {
   if (a === 'uatreopen') uatAction('reopen');
   if (a === 'chgsubmit') chgSubmit();
   if (a === 'dodelete') doDelete();
+  if (a === 'admlist' || a === 'admmove' || a === 'admdel') adminAction(a, t);
   if (a === 'sasubmit') saSubmit();
   if (a === 'sadelete') saDelete();
   if (a === 'reset'){ DB = normalize(clone(SEED)); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
@@ -1408,6 +1562,7 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'addfr') submitFr();
   if (e.target.id === 'editbr' || e.target.id === 'editfr') saveEdit();
   if (e.target.id === 'saedit') saSave();
+  if (e.target.id === 'admadd') adminAdd();
   const dec = e.submitter?.dataset.decision || 'approve';
   if (e.target.id === 'tcedit') tcSave();
   if (e.target.id === 'tcreview') tcReview(dec);
@@ -1421,16 +1576,18 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'sareview') saReview(e.submitter?.dataset.decision || 'approve');
   if (e.target.id === 'reviewitem') submitReview(e.submitter?.dataset.decision || 'approve');
 });
+document.addEventListener('toggle', e => { if (e.target.classList?.contains('history')) state.histOpen = e.target.open; }, true);
 document.addEventListener('input', e => {
   if (e.target.id === 'f-q'){ state.regFilter.q = e.target.value; const pos = e.target.selectionStart; render(); const el = document.getElementById('f-q'); el.focus(); try{ el.setSelectionRange(pos,pos);}catch(_){} }
 });
 document.addEventListener('change', e => {
+  if (e.target.dataset && e.target.dataset.adm) return adminChange(e.target);
   if (e.target.id === 'f-area'){ state.regFilter.area = e.target.value; render(); }
   if (e.target.id === 'f-pri'){ state.regFilter.pri = e.target.value; render(); }
   if (e.target.id === 'f-audit'){ state.auditFilter = e.target.value; render(); }
 });
 const h = (location.hash || '').slice(1);
-if (['overview','register','approvals','audit','framework'].includes(h)) state.view = h;
+if (['overview','register','approvals','audit','framework','admin'].includes(h)) state.view = h;
 DB = normalize(clone(SEED));
 render();
 </script>
