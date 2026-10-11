@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important}body{margin:0}</style>
+<title>ReqGov Traceability Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: SharePoint-style portal — slim site bar, tab nav, one working canvas per view; records read like a bank ledger */
+/* Palette taken from the logo: sky #4a98bc, steel #2f6d92, deep #22546d */
+:root{
+  --bg:#f2f5f8; --surface:#ffffff; --sunk:#e9eff4; --ink:#13222c; --muted:#556773; --line:#d4dee6;
+  --accent:#2f6d92; --accent-ink:#ffffff; --accent-soft:#e2eef5; --brass:#2f6d92;
+  --logo-sky:#4a98bc; --logo-steel:#2f6d92; --logo-deep:#22546d; --nav:#22546d; --nav-ink:#ffffff; --nav-muted:#b9d3e2;
+  --good:#2c7a47; --good-soft:#e3f1e8; --warn:#9c5d00; --warn-soft:#fbefd9; --crit:#b3261e; --crit-soft:#fbe5e3;
+  --f-display:"Archivo","Segoe UI",system-ui,sans-serif; --f-body:"Public Sans","Segoe UI",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c151b; --surface:#13202a; --sunk:#192a35; --ink:#e3ecf2; --muted:#97aab6; --line:#263a47;
+  --accent:#6fb3d4; --accent-ink:#0b161d; --accent-soft:#17323f; --brass:#6fb3d4;
+  --logo-sky:#5aaed3; --logo-steel:#3f86b1; --logo-deep:#2e6886; --nav:#122634; --nav-ink:#e3ecf2; --nav-muted:#8fb0c3;
+  --good:#6cc58b; --good-soft:#173826; --warn:#e5a94c; --warn-soft:#3a2b12; --crit:#f08a80; --crit-soft:#41201d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c151b; --surface:#13202a; --sunk:#192a35; --ink:#e3ecf2; --muted:#97aab6; --line:#263a47;
+  --accent:#6fb3d4; --accent-ink:#0b161d; --accent-soft:#17323f; --brass:#6fb3d4;
+  --logo-sky:#5aaed3; --logo-steel:#3f86b1; --logo-deep:#2e6886; --nav:#122634; --nav-ink:#e3ecf2; --nav-muted:#8fb0c3;
+  --good:#6cc58b; --good-soft:#173826; --warn:#e5a94c; --warn-soft:#3a2b12; --crit:#f08a80; --crit-soft:#41201d; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:1.6rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.15rem;font-weight:600}
+h3{font-size:.95rem;font-weight:600}
+p{margin:0}
+.mono{font-family:var(--f-mono);font-size:.86em}
+.muted{color:var(--muted)}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* site bar */
+.sitebar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:inset 0 3px 0 var(--logo-sky)}
+.logo{height:30px;width:auto;flex:none;display:block}
+.brandbar{width:1px;height:30px;background:var(--line);flex:none}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px}
+.sitebar .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:12px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.mark{width:30px;height:30px;border-radius:6px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:13px;flex:none}
+.brand b{font-family:var(--f-display);font-size:1rem;display:block}
+.brand small{color:var(--muted);font-size:.78rem}
+.spacer{flex:1}
+.sample{font-size:.75rem;border:1px dashed var(--brass);color:var(--brass);padding:2px 8px;border-radius:20px;white-space:nowrap}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 12px 9px;cursor:pointer;color:var(--muted);font-weight:500;white-space:nowrap}
+nav.tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+nav.tabs button:hover{color:var(--ink)}
+.badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--crit);color:var(--surface);font-size:.7rem;font-weight:600;text-align:center;line-height:18px}
+
+main{padding-block:24px 48px;display:grid;gap:24px}
+.pagehead{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between}
+.pagehead p{max-width:62ch;margin-top:4px}
+
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--crit)}
+.btn.link{border:0;background:none;padding:0;color:var(--accent);font-weight:500}
+.btn.link:hover{text-decoration:underline}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}
+.panel > header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+
+/* KPI strip */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.kpi{padding:16px 18px;border-right:1px solid var(--line);min-width:0}
+.kpi:last-child{border-right:0}
+.kpi .v{font-family:var(--f-display);font-size:1.9rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;margin-top:4px}
+.kpi .s{color:var(--muted);font-size:.8rem}
+.kpi.alert .v{color:var(--crit)}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:nth-child(2){border-right:0}.kpi:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+
+/* pipeline */
+.pipe-scroll{overflow-x:auto}
+.pipe{display:grid;grid-template-columns:repeat(7,minmax(132px,1fr));gap:0;min-width:930px}
+.stage{padding:0 12px 4px;border-left:1px solid var(--line);display:grid;align-content:start;gap:8px}
+.stage:first-child{border-left:0;padding-left:0}
+.stage .code{font-family:var(--f-mono);font-size:.75rem;color:var(--accent);font-weight:500}
+.stage .ct{color:var(--logo-deep)}
+.kpi .v{color:var(--logo-deep)}
+.kpi:first-child{box-shadow:inset 3px 0 0 var(--logo-sky)}
+.stage .nm{font-weight:600;font-size:.85rem;min-height:2.6em}
+.stage .ct{font-family:var(--f-display);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums}
+.chiplist{display:grid;gap:6px}
+.bcrchip{text-align:left;border:1px solid var(--line);background:var(--sunk);border-radius:6px;padding:6px 8px;cursor:pointer;display:grid;gap:2px;border-left:3px solid var(--line)}
+.bcrchip:hover{border-color:var(--accent)}
+.bcrchip.breach{border-left-color:var(--crit)}
+.bcrchip .mono{color:var(--muted)}
+.bcrchip span:last-child{font-size:.8rem;line-height:1.3}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th{text-align:left;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);background:var(--sunk);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable:hover td{background:var(--accent-soft)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.cellstack{display:grid;gap:4px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.75rem;font-weight:600;padding:1px 8px;border-radius:20px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.crit{background:var(--crit-soft);color:var(--crit)}
+.pill.accent{background:var(--accent-soft);color:var(--accent)}
+.pill.plain::before{display:none}
+
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select,.field input,.field select,.field textarea{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-width:0}
+.filters input{flex:1 1 220px}
+
+/* detail */
+.crumbs{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--muted)}
+.detail-head{display:grid;gap:10px}
+.detail-head .idline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px 20px;margin-top:6px}
+.meta div{min-width:0}
+.meta dd{margin:2px 0 0;font-weight:500;overflow-wrap:anywhere}
+.meta dt{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+dl{margin:0}
+
+.stepper{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;list-style:none;margin:0;padding:0}
+.stepper li{padding:10px 10px 8px;border-top:4px solid var(--line);display:grid;gap:2px;min-width:0}
+.stepper li.done{border-top-color:var(--logo-sky)}
+.stepper li.current{border-top-color:var(--accent);background:var(--accent-soft)}
+.stepper li.current.breach{border-top-color:var(--crit)}
+.stepper .code{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+.stepper .nm{font-size:.8rem;font-weight:600;line-height:1.25}
+.stepper .st{font-size:.72rem;color:var(--muted)}
+@media (max-width:760px){.stepper{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.two{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.two{grid-template-columns:minmax(0,1fr)}}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.three{grid-template-columns:minmax(0,1fr)}}
+
+.decision{border:1px solid var(--accent);border-radius:8px;padding:18px;background:var(--surface);display:grid;gap:14px}
+.decision .criteria{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.86rem}
+.decision .criteria li{display:flex;gap:8px;align-items:flex-start}
+.tick{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700}
+.tick.ok{background:var(--good-soft);color:var(--good)}
+.tick.no{background:var(--crit-soft);color:var(--crit)}
+.field{display:grid;gap:4px}
+.field label{font-size:.8rem;font-weight:600}
+.field textarea{resize:vertical;min-height:64px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.msg{font-size:.85rem;padding:8px 10px;border-radius:6px}
+.msg.err{background:var(--crit-soft);color:var(--crit)}
+.msg.ok{background:var(--good-soft);color:var(--good)}
+
+.card{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--surface);display:grid;gap:10px;align-content:start;min-width:0}
+.card .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.85rem}
+.card .kv span:nth-child(odd){color:var(--muted)}
+.empty{color:var(--muted);font-size:.85rem;font-style:italic}
+
+.trace{font-family:var(--f-mono);font-size:.74rem;color:var(--muted)}
+.idref{font-family:var(--f-mono);font-size:.82rem;font-weight:500}
+
+.timeline{list-style:none;margin:0;padding:0;display:grid}
+.timeline li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.85rem}
+.timeline li:last-child{border-bottom:0}
+.timeline time{color:var(--muted);font-variant-numeric:tabular-nums;font-size:.78rem}
+@media (max-width:520px){.timeline li{grid-template-columns:1fr;gap:2px}}
+
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.form-grid .full{grid-column:1/-1}
+@media (max-width:640px){.form-grid{grid-template-columns:minmax(0,1fr)}}
+.checks{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.88rem}
+.checks label{display:flex;gap:6px;align-items:center;font-weight:400}
+
+.ref-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.ref-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.ref-levels{grid-template-columns:minmax(0,1fr)}}
+.lvl{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--surface);display:grid;gap:6px;align-content:start}
+.lvl .n{font-family:var(--f-mono);font-size:.75rem;color:var(--accent);font-weight:500}
+.lvl p{font-size:.85rem;color:var(--muted)}
+.lvl .fields{font-size:.8rem}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:.88rem;max-width:calc(100% - 32px);z-index:10}
+footer{color:var(--muted);font-size:.78rem;padding-block:0 32px}
+@media (prefers-reduced-motion:no-preference){.bcrchip,.btn,tbody tr.clickable td{transition:background .15s,border-color .15s}}
+</style>
+</head>
+<body>
+
+<header class="sitebar">
+  <div class="wrap">
+    <div class="row">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 220 136" role="img" aria-label="Logo"><polygon points="0,0 40,0 84,136 44,136" fill="var(--logo-sky)"/><rect x="98" y="0" width="40" height="136" fill="var(--logo-steel)"/><path d="M152 0A68 68 0 0 1 152 136Z" fill="var(--logo-deep)"/></svg>
+        <span class="brandbar" aria-hidden="true"></span>
+        <div><b>Requirements Governance</b><small>IT Governance Hub › /sites/ReqGov</small></div>
+      </div>
+      <div class="spacer"></div>
+      <span class="sample">Prototype · sample data</span>
+      <button class="btn" data-act="reset" type="button">Reset demo</button>
+    </div>
+    <nav class="tabs" aria-label="Site sections" id="tabs"></nav>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const TODAY = '2026-10-11';
+const GATES = [
+  {g:0, code:'G0', name:'Submission check', sla:0, who:'Automatic validation (flow F1)'},
+  {g:1, code:'G1', name:'BCR approval', sla:5, who:'Business Sponsor, then Demand Manager'},
+  {g:2, code:'G2', name:'BR baseline', sla:5, who:'Business Owner and Lead BA'},
+  {g:3, code:'G3', name:'FR approval', sla:5, who:'System Owners and Lead BA'},
+  {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, Information Security, Risk'},
+  {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'Business Owner (not a test executor)'},
+  {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager and CAB'}
+];
+const STATUS_AT = {1:'Submitted',2:'Approved · BRs in review',3:'FRs in review',4:'Under ARB review',5:'UAT pending sign-off',6:'Awaiting CAB',7:'Closed'};
+const PEOPLE = {
+  demand:'Noora Abdulla', ba:'Maryam Hasan', sysown:'Yusuf Mahmood', arb:'Ali Radhi', infosec:'Hussain Ali', chg:'Sara Ebrahim', qa:'Omar Saleh'
+};
+const AREAS = ['Retail Banking','Corporate Banking','Digital Channels','Compliance','Cards'];
+const SYSTEMS = ['Core Banking','Payments Hub','Mobile App','Internet Banking','Data Warehouse','Trade Finance','AML Platform','Branch Systems','Card Management'];
+
+const SEED = {
+  counter: 6, chgCounter: 567,
+  bcrs: [
+    {id:'BCR-2026-001', title:'Instant payment limit increase', area:'Retail Banking', domain:'Payments', requestor:'Ahmed Janahi', sponsor:'Fatima Al-Sayed',
+     just:'Customers are moving high-value transfers to competitors that allow larger instant payments. A higher daily limit retains payment volume and fee income.',
+     systems:['Core Banking','Payments Hub','Mobile App'], priority:'High', gate:5, since:'2026-10-08', reg:false, target:'2026-11-15', created:'2026-07-02',
+     brs:[
+      {id:'BR-001', title:'Higher instant payment limit', stmt:'Retail customers can send instant payments up to the revised daily limit for their segment.', pri:'Must', owner:'Fatima Al-Sayed', status:'Baselined', ac:'Payment within the segment limit succeeds; payment above it is declined with a clear message.',
+        frs:[{id:'FR-001', d:'Payments Hub shall validate the revised per-transaction and daily limits.', sys:'Payments Hub', cx:'Medium', st:'Built'},
+             {id:'FR-002', d:'Core Banking shall hold limit parameters per customer segment.', sys:'Core Banking', cx:'High', st:'Built'}],
+        tcs:[{id:'TC-001', d:'Send a payment at the new daily limit (Premier segment).', r:'Pass', by:'Omar Saleh'},
+             {id:'TC-002', d:'Send a payment above the limit and confirm the decline message.', r:'Pass', by:'Omar Saleh'}]},
+      {id:'BR-002', title:'Step-up authentication for high-value payments', stmt:'Payments above BHD 1,000 require biometric or OTP step-up authentication.', pri:'Must', owner:'Fatima Al-Sayed', status:'Baselined', ac:'Payments above BHD 1,000 cannot complete without a successful step-up.',
+        frs:[{id:'FR-003', d:'Mobile App shall prompt for biometric step-up above the threshold.', sys:'Mobile App', cx:'Medium', st:'Built'},
+             {id:'FR-004', d:'Payments Hub shall reject high-value requests without a step-up token.', sys:'Payments Hub', cx:'Low', st:'Built'}],
+        tcs:[{id:'TC-003', d:'High-value payment with and without step-up token.', r:'Pass', by:'Omar Saleh'}]},
+      {id:'BR-003', title:'Monthly limit utilisation report', stmt:'Compliance receives a monthly report of limit utilisation by segment.', pri:'Should', owner:'Fatima Al-Sayed', status:'Baselined', ac:'Report is available by the 3rd working day of each month.',
+        frs:[{id:'FR-005', d:'Data Warehouse shall produce the monthly limit utilisation report.', sys:'Data Warehouse', cx:'Low', st:'Built'},
+             {id:'FR-006', d:'The report shall be filed to the Compliance evidence library.', sys:'Data Warehouse', cx:'Low', st:'Built'}],
+        tcs:[{id:'TC-004', d:'Generate the September report and verify totals against Core Banking.', r:'Pass', by:'Omar Saleh'}]}
+     ],
+     sa:{id:'SA-001', vendor:'Existing Vendor', approach:'Configuration and integration', risk:'Medium', effort:42, arch:'Approved', status:'Approved', sec:'Cleared'},
+     uat:{id:'UAT-001', owner:'Fatima Al-Sayed', result:'—', date:null, status:'Pending Sign-Off'},
+     chg:null},
+    {id:'BCR-2026-002', title:'Open banking consent dashboard', area:'Digital Channels', domain:'Open Banking', requestor:'Zainab Mansoor', sponsor:'Khalid Rashed',
+     just:'Central bank open banking rules require customers to view and revoke third-party data-sharing consents in the bank\'s own channels.',
+     systems:['Internet Banking','Mobile App'], priority:'Critical', gate:4, since:'2026-09-21', reg:true, target:'2026-12-31', created:'2026-08-10',
+     brs:[
+      {id:'BR-001', title:'View and revoke consents', stmt:'Customers can see every active third-party consent and revoke any of them.', pri:'Must', owner:'Khalid Rashed', status:'Baselined', ac:'Revoked consent stops data sharing within 60 seconds.',
+        frs:[{id:'FR-001', d:'Internet Banking shall list active consents with provider and scope.', sys:'Internet Banking', cx:'Medium', st:'Approved'},
+             {id:'FR-002', d:'Mobile App shall offer one-tap revocation with confirmation.', sys:'Mobile App', cx:'Medium', st:'Approved'}],
+        tcs:[{id:'TC-001', d:'Revoke a consent and confirm the provider API call fails.', r:'Not Run', by:null}]},
+      {id:'BR-002', title:'Consent audit history', stmt:'Every consent grant, change and revocation is logged for regulatory audit.', pri:'Must', owner:'Khalid Rashed', status:'Baselined', ac:'History is retained for 5 years and exportable.',
+        frs:[{id:'FR-003', d:'Internet Banking shall write consent events to the audit store.', sys:'Internet Banking', cx:'High', st:'Approved'}],
+        tcs:[]}
+     ],
+     sa:{id:'SA-001', vendor:'New Vendor', approach:'Vendor package with API integration', risk:'High', effort:65, arch:'Pending', status:'Under ARB Review', sec:'Pending'},
+     uat:null, chg:null},
+    {id:'BCR-2026-003', title:'Letter of credit issuance workflow', area:'Corporate Banking', domain:'Trade Finance', requestor:'Hamad Al-Aali', sponsor:'Reem Bucheeri',
+     just:'LC issuance takes 4 days on paper. A digital workflow targets same-day issuance for corporate clients.',
+     systems:['Trade Finance','Core Banking'], priority:'Medium', gate:2, since:'2026-09-24', reg:false, target:'2027-03-31', created:'2026-09-01',
+     brs:[
+      {id:'BR-001', title:'Digital LC application', stmt:'Corporate clients can submit LC applications online with supporting documents.', pri:'Must', owner:'Reem Bucheeri', status:'Draft', ac:'Application captures all fields required by UCP 600 and the bank\'s LC form.', frs:[], tcs:[]},
+      {id:'BR-002', title:'Maker-checker approval', stmt:'Each LC requires maker and checker approval in Trade Operations.', pri:'Must', owner:'Reem Bucheeri', status:'Draft', ac:'Maker cannot approve their own LC.', frs:[], tcs:[]}
+     ],
+     sa:null, uat:null, chg:null},
+    {id:'BCR-2026-004', title:'AML transaction monitoring rule tuning', area:'Compliance', domain:'Financial Crime', requestor:'Layla Fakhro', sponsor:'Mohamed Shehab',
+     just:'False-positive alerts consume 70% of analyst time. Tuned thresholds reduce noise while keeping regulatory coverage.',
+     systems:['AML Platform','Data Warehouse'], priority:'Critical', gate:6, since:'2026-10-01', reg:true, target:'2026-10-20', created:'2026-05-14',
+     brs:[
+      {id:'BR-001', title:'Tuned alert thresholds', stmt:'Alert thresholds reflect the 2026 risk assessment by customer segment.', pri:'Must', owner:'Mohamed Shehab', status:'Baselined', ac:'False positives fall without any missed true positive in back-testing.',
+        frs:[{id:'FR-001', d:'AML Platform shall apply segment-specific thresholds.', sys:'AML Platform', cx:'High', st:'Built'}],
+        tcs:[{id:'TC-001', d:'Back-test 6 months of transactions against the new rules.', r:'Pass', by:'Omar Saleh'},
+             {id:'TC-002', d:'Confirm known true-positive cases still alert.', r:'Pass', by:'Omar Saleh'}]},
+      {id:'BR-002', title:'Rule change evidence', stmt:'Each rule change is documented with its rationale for the regulator.', pri:'Must', owner:'Mohamed Shehab', status:'Baselined', ac:'Evidence pack exists for every changed rule.',
+        frs:[{id:'FR-002', d:'Data Warehouse shall export before/after alert statistics per rule.', sys:'Data Warehouse', cx:'Low', st:'Built'}],
+        tcs:[{id:'TC-003', d:'Verify the before/after export for all 14 changed rules.', r:'Pass', by:'Omar Saleh'}]}
+     ],
+     sa:{id:'SA-001', vendor:'Existing Vendor', approach:'Configuration', risk:'High', effort:30, arch:'Approved with Conditions', status:'Approved', sec:'Cleared'},
+     uat:{id:'UAT-001', owner:'Mohamed Shehab', result:'Accepted', date:'2026-09-28', status:'Signed Off'},
+     chg:{id:'CHG-00561', type:'Normal', risk:'High', cab:'Pending', release:'2026-10-16', deploy:'Scheduled', pir:'Not Due'}},
+    {id:'BCR-2026-005', title:'Branch queue management upgrade', area:'Retail Banking', domain:'Branch Operations', requestor:'Ebrahim Saad', sponsor:'Fatima Al-Sayed',
+     just:'The queue ticketing system is out of vendor support from June 2027.',
+     systems:['Branch Systems'], priority:'Low', gate:1, since:'2026-10-06', reg:false, target:'2027-05-31', created:'2026-10-06',
+     brs:[], sa:null, uat:null, chg:null},
+    {id:'BCR-2026-006', title:'Card controls in mobile app', area:'Cards', domain:'Card Services', requestor:'Amina Yateem', sponsor:'Jassim Taqi',
+     just:'Customers can freeze cards and set merchant-category limits without calling the contact centre.',
+     systems:['Card Management','Mobile App'], priority:'High', gate:7, since:'2026-09-02', reg:false, target:'2026-09-01', created:'2026-03-11',
+     brs:[
+      {id:'BR-001', title:'Freeze and unfreeze card', stmt:'Customers can freeze and unfreeze any of their cards in the app.', pri:'Must', owner:'Jassim Taqi', status:'Verified', ac:'Frozen card declines within 5 seconds.',
+        frs:[{id:'FR-001', d:'Card Management shall expose a freeze API.', sys:'Card Management', cx:'Medium', st:'Verified'}],
+        tcs:[{id:'TC-001', d:'Freeze card, attempt POS purchase, unfreeze.', r:'Pass', by:'Omar Saleh'}]}
+     ],
+     sa:{id:'SA-001', vendor:'Existing Vendor', approach:'Integration', risk:'Medium', effort:28, arch:'Approved', status:'Approved', sec:'Cleared'},
+     uat:{id:'UAT-001', owner:'Jassim Taqi', result:'Accepted', date:'2026-08-20', status:'Signed Off'},
+     chg:{id:'CHG-00542', type:'Normal', risk:'Medium', cab:'Approved', release:'2026-08-27', deploy:'Deployed', pir:'Completed – Successful'}}
+  ],
+  audit: [
+    {t:'2026-10-08T14:22', who:'Omar Saleh', act:'Test case result recorded', rec:'BCR-2026-001 / BR-003 / TC-004', det:'Result set to Pass'},
+    {t:'2026-10-08T14:30', who:'svc-reqgov (flow F6)', act:'UAT readiness check passed', rec:'BCR-2026-001 / UAT-001', det:'4 of 4 test cases Pass; 3 of 3 BRs covered'},
+    {t:'2026-10-06T10:05', who:'svc-reqgov (flow F1)', act:'ID issued', rec:'BCR-2026-005', det:'G0 validation passed; status set to Submitted'},
+    {t:'2026-10-01T16:40', who:'Mohamed Shehab', act:'Gate G5 approved', rec:'BCR-2026-004 / UAT-001', det:'UAT accepted; signer is not a test executor'},
+    {t:'2026-10-01T16:41', who:'svc-reqgov (flow F8)', act:'Change request created', rec:'BCR-2026-004 / CHG-00561', det:'Routed to CAB (Normal change)'},
+    {t:'2026-09-24T11:12', who:'Reem Bucheeri', act:'Gate G1 approved', rec:'BCR-2026-003', det:'Sponsor approval recorded'},
+    {t:'2026-09-21T09:30', who:'svc-reqgov (flow F5)', act:'Assessment submitted to ARB', rec:'BCR-2026-002 / SA-001', det:'New vendor: third-party risk review added'},
+    {t:'2026-09-02T12:00', who:'svc-reqgov (flow F9)', act:'BCR closed', rec:'BCR-2026-006', det:'PIR completed; Document Set declared a record'}
+  ]
+};
+
+const clone = o => JSON.parse(JSON.stringify(o));
+let DB = clone(SEED);
+let state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''};
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate = d => d ? `${Number(d.slice(8,10))} ${MONTHS[Number(d.slice(5,7))-1]} ${d.slice(0,4)}` : '—';
+const fmtTime = t => `${fmtDate(t.slice(0,10))}, ${t.slice(11,16)}`;
+function workdays(from, to){ // Bahrain working week: Sunday–Thursday
+  let n = 0; const a = new Date(from+'T12:00:00Z'), b = new Date(to+'T12:00:00Z');
+  for (let d = new Date(a); d < b; d.setUTCDate(d.getUTCDate()+1)){ const w = d.getUTCDay(); if (w !== 5 && w !== 6) n++; }
+  return n;
+}
+function addDays(d, n){ const x = new Date(d+'T12:00:00Z'); x.setUTCDate(x.getUTCDate()+n); return x.toISOString().slice(0,10); }
+function nowStamp(){ const d = new Date(); return `${TODAY}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+const getBcr = id => DB.bcrs.find(b => b.id === id);
+const isOpen = b => b.gate < 7;
+const daysAtGate = b => workdays(b.since, TODAY);
+const isBreach = b => isOpen(b) && b.gate >= 1 && daysAtGate(b) > GATES[b.gate].sla;
+const statusOf = b => b.returned ? `Returned at ${GATES[b.gate].code}` : STATUS_AT[b.gate];
+
+function pill(text, kind=''){ return `<span class="pill ${kind}">${esc(text)}</span>`; }
+const priKind = p => ({Critical:'crit', High:'warn', Must:'accent'}[p] || '');
+const resKind = r => ({Pass:'good', Fail:'crit', Blocked:'warn'}[r] || '');
+function statusKind(b){ if (b.gate === 7) return 'good'; if (b.returned) return 'crit'; if (isBreach(b)) return 'crit'; return 'accent'; }
+
+function log(who, act, rec, det){ DB.audit.unshift({t:nowStamp(), who, act, rec, det}); }
+
+function exceptions(){
+  const out = [];
+  DB.bcrs.forEach(b => {
+    if (!isOpen(b)) return;
+    if (isBreach(b)) out.push({sev:'Medium', rule:'Gate SLA', bcr:b.id, txt:`${GATES[b.gate].code} ${GATES[b.gate].name}: ${daysAtGate(b)} working days against a ${GATES[b.gate].sla}-day SLA`});
+    b.brs.filter(r => r.status === 'Baselined').forEach(r => {
+      if (!r.frs.length) out.push({sev:'Medium', rule:'BR coverage', bcr:b.id, txt:`${r.id} has no functional requirement`});
+      if (!r.tcs.length) out.push({sev:'High', rule:'Test coverage', bcr:b.id, txt:`${r.id} has no test case`});
+    });
+    if (b.chg && b.chg.cab === 'Approved' && !(b.uat && b.uat.status === 'Signed Off')) out.push({sev:'Critical', rule:'Acceptance before release', bcr:b.id, txt:`${b.chg.id} approved without UAT sign-off`});
+  });
+  const order = {Critical:0, High:1, Medium:2, Low:3};
+  return out.sort((a,b) => order[a.sev]-order[b.sev]);
+}
+
+/* ---------- navigation ---------- */
+const TABS = [['overview','Overview'],['register','BCR Register'],['approvals','My approvals'],['audit','Audit log'],['framework','Framework']];
+function renderTabs(){
+  const pending = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).length;
+  document.getElementById('tabs').innerHTML = TABS.map(([k,l]) =>
+    `<button type="button" data-act="nav" data-view="${k}" ${state.view===k || (state.view==='detail' && k==='register') || (state.view==='new' && k==='register') ? 'aria-current="page"' : ''}>${l}${k==='approvals' ? `<span class="badge">${pending}</span>` : ''}</button>`).join('');
+}
+function go(view, bcr){ state.view = view; if (bcr !== undefined) state.bcr = bcr; if (view !== 'detail') state.flash = null; render(); window.scrollTo(0,0);
+  try { if (['overview','register','approvals','audit','framework'].includes(view)) history.replaceState(null,'','#'+view); } catch(e){} }
+
+/* ---------- views ---------- */
+function vOverview(){
+  const open = DB.bcrs.filter(isOpen);
+  const based = DB.bcrs.flatMap(b => b.brs.filter(r => r.status === 'Baselined'));
+  const covered = based.filter(r => r.tcs.length).length;
+  const ex = exceptions();
+  const stages = GATES.slice(1).map(g => ({...g, items: DB.bcrs.filter(b => b.gate === g.g)}));
+  stages.push({code:'—', name:'Closed', items: DB.bcrs.filter(b => b.gate === 7), closed:true});
+  return `
+  <div class="pagehead"><div><h1>Requirements pipeline</h1><p class="muted">Every business change request in flight, by the gate it is waiting on. Snapshot as of ${fmtDate(TODAY)}.</p></div>
+    <button class="btn primary" type="button" data-act="nav" data-view="new">New business change request</button></div>
+  <section class="kpis" aria-label="Key figures">
+    <div class="kpi"><div class="label">Open BCRs</div><div class="v">${open.length}</div><div class="s">${open.filter(b=>b.reg).length} regulatory</div></div>
+    <div class="kpi"><div class="label">Decisions pending</div><div class="v">${open.filter(b=>b.gate>=1).length}</div><div class="s">across gates G1–G6</div></div>
+    <div class="kpi"><div class="label">BR test coverage</div><div class="v">${based.length ? Math.round(covered/based.length*100) : 0}%</div><div class="s">${covered} of ${based.length} baselined BRs</div></div>
+    <div class="kpi ${ex.length ? 'alert' : ''}"><div class="label">Traceability exceptions</div><div class="v">${ex.length}</div><div class="s">from the nightly scan</div></div>
+  </section>
+  <section class="panel"><header><h2>Stage gates</h2><span class="muted" style="font-size:.8rem">Red edge = SLA breached</span></header>
+    <div class="pipe-scroll"><div class="pipe">
+    ${stages.map(s => `<div class="stage"><span class="code">${s.code}</span><span class="nm">${esc(s.name)}</span><span class="ct">${s.items.length}</span>
+      <div class="chiplist">${s.items.map(b => `<button type="button" class="bcrchip ${isBreach(b)?'breach':''}" data-act="open" data-id="${b.id}"><span class="mono">${b.id}${s.closed?'':` · ${daysAtGate(b)}d`}</span><span>${esc(b.title)}</span></button>`).join('') || '<span class="empty">None</span>'}</div></div>`).join('')}
+    </div></div>
+  </section>
+  <section class="panel"><header><h2>Traceability exceptions</h2><span class="muted" style="font-size:.8rem">Flow F10 · runs nightly</span></header>
+    ${ex.length ? `<div class="tbl-wrap"><table><thead><tr><th>Severity</th><th>Rule</th><th>Record</th><th>Finding</th></tr></thead><tbody>
+    ${ex.map(e => `<tr class="clickable" data-act="open" data-id="${e.bcr}"><td>${pill(e.sev, e.sev==='Critical'||e.sev==='High'?'crit':'warn')}</td><td>${esc(e.rule)}</td><td class="idref">${e.bcr}</td><td>${esc(e.txt)}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="empty">No exceptions. Every baselined requirement is covered.</p>'}
+  </section>`;
+}
+
+function vRegister(){
+  const f = state.regFilter;
+  const rows = DB.bcrs.filter(b => (!f.area || b.area===f.area) && (!f.pri || b.priority===f.pri) &&
+    (!f.q || (b.id+' '+b.title+' '+b.domain+' '+b.sponsor).toLowerCase().includes(f.q.toLowerCase())));
+  return `
+  <div class="pagehead"><div><h1>BCR Register</h1><p class="muted">Level 1 list. Select a request to see its full chain from requirements to release.</p></div>
+    <button class="btn primary" type="button" data-act="nav" data-view="new">New business change request</button></div>
+  <div class="filters">
+    <input id="f-q" type="search" placeholder="Search by ID, title, domain or sponsor" value="${esc(f.q)}" aria-label="Search">
+    <select id="f-area" aria-label="Business area"><option value="">All business areas</option>${AREAS.map(a=>`<option ${f.area===a?'selected':''}>${a}</option>`).join('')}</select>
+    <select id="f-pri" aria-label="Priority"><option value="">All priorities</option>${['Critical','High','Medium','Low'].map(p=>`<option ${f.pri===p?'selected':''}>${p}</option>`).join('')}</select>
+  </div>
+  <div class="tbl-wrap"><table><thead><tr><th>BCR ID</th><th>Title</th><th>Business area · Domain</th><th>Priority</th><th>Gate</th><th>Status</th><th>Sponsor</th><th>Target go-live</th></tr></thead><tbody>
+  ${rows.map(b => `<tr class="clickable" data-act="open" data-id="${b.id}"><td class="idref">${b.id}</td><td><div class="cellstack"><b>${esc(b.title)}</b>${b.reg?'<span class="pill plain warn" style="width:max-content">Regulatory</span>':''}</div></td>
+    <td>${esc(b.area)}<br><span class="muted">${esc(b.domain)}</span></td><td>${pill(b.priority, priKind(b.priority))}</td>
+    <td class="mono">${b.gate<7 ? GATES[b.gate].code : '—'}</td><td>${pill(statusOf(b), statusKind(b))}</td><td>${esc(b.sponsor)}</td><td class="num">${fmtDate(b.target)}</td></tr>`).join('') ||
+    '<tr><td colspan="8" class="empty">No requests match these filters.</td></tr>'}
+  </tbody></table></div>`;
+}
+
+function criteria(b){
+  const g = b.gate, c = [];
+  if (g === 1) c.push({ok:b.sponsor !== b.requestor, t:'Sponsor is not the requestor'}, {ok:b.just.length > 20, t:'Business justification provided'});
+  if (g === 2){ c.push({ok:b.brs.length > 0, t:'At least one business requirement'}); b.brs.forEach(r => c.push({ok:!!r.ac, t:`${r.id} has acceptance criteria`})); }
+  if (g === 3) b.brs.forEach(r => c.push({ok:r.frs.length > 0, t:`${r.id} has at least one functional requirement`}));
+  if (g === 4) c.push({ok:!!b.sa, t:'Solution assessment submitted'}, {ok:b.brs.every(r=>r.frs.length), t:'All BRs decomposed into FRs'});
+  if (g === 5){ b.brs.forEach(r => c.push({ok:r.tcs.length > 0, t:`${r.id} has test coverage`}));
+    const all = b.brs.flatMap(r=>r.tcs); c.push({ok:all.length && all.every(t=>t.r==='Pass'), t:`All test cases pass (${all.filter(t=>t.r==='Pass').length} of ${all.length})`}); }
+  if (g === 6) c.push({ok:!!(b.uat && b.uat.status==='Signed Off'), t:'UAT signed off'}, {ok:!!b.chg, t:'Change request raised with rollback plan'});
+  return c;
+}
+function approverOptions(b){
+  const owner = b.brs[0]?.owner || b.sponsor;
+  const map = {1:[b.sponsor, PEOPLE.demand], 2:[owner, PEOPLE.ba], 3:[PEOPLE.sysown, PEOPLE.ba], 4:[PEOPLE.arb, PEOPLE.infosec], 5:[owner], 6:[PEOPLE.chg]};
+  const list = [...(map[b.gate]||[])];
+  [b.requestor, PEOPLE.qa].forEach(p => { if (!list.includes(p)) list.push(p); });
+  return {expected: map[b.gate]||[], list};
+}
+
+function vDetail(){
+  const b = getBcr(state.bcr); if (!b) return '<p>Record not found.</p>';
+  const tcsAll = b.brs.flatMap(r => r.tcs);
+  const steps = GATES.map(g => {
+    const cls = g.g < b.gate ? 'done' : g.g === b.gate ? 'current' + (isBreach(b)?' breach':'') : '';
+    const st = g.g < b.gate ? 'Approved' : g.g === b.gate ? `${daysAtGate(b)} of ${g.sla} days` : 'Not started';
+    return `<li class="${cls}"><span class="code">${g.code}</span><span class="nm">${g.name}</span><span class="st">${st}</span></li>`;
+  }).join('');
+  const hist = DB.audit.filter(a => a.rec.startsWith(b.id));
+  const opts = approverOptions(b);
+  const crit = criteria(b);
+  const fl = state.flash;
+
+  const decision = b.gate === 7
+    ? `<div class="decision"><h3>Closed</h3><p class="muted">All gates approved and the post-implementation review is complete. Records in this BCR are locked and its Document Set is declared a record.</p></div>`
+    : `<form class="decision" id="decide" novalidate>
+        <div><div class="label">Awaiting ${GATES[b.gate].code}</div><h3 style="margin-top:2px">${GATES[b.gate].name}</h3><p class="muted" style="font-size:.85rem;margin-top:2px">Approvers: ${GATES[b.gate].who}</p></div>
+        <div><div class="label" style="margin-bottom:6px">Entry criteria (checked by flow)</div><ul class="criteria">
+          ${crit.map(c => `<li><span class="tick ${c.ok?'ok':'no'}" aria-hidden="true">${c.ok?'✓':'✕'}</span><span>${esc(c.t)}${c.ok?'':' <span class="muted">(not met)</span>'}</span></li>`).join('')}</ul></div>
+        <div class="field"><label for="d-who">Decision recorded by</label><select id="d-who">${opts.list.map(p => `<option>${esc(p)}</option>`).join('')}</select></div>
+        <div class="field"><label for="d-note">Comments</label><textarea id="d-note" placeholder="Required when returning the request"></textarea></div>
+        ${fl ? `<div class="msg ${fl.ok?'ok':'err'}" role="status">${esc(fl.text)}</div>` : ''}
+        <div class="actions"><button class="btn primary" type="submit" data-decision="approve">Approve ${GATES[b.gate].code}</button><button class="btn danger" type="submit" data-decision="return">Return to owner</button></div>
+      </form>`;
+
+  const rtm = b.brs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Business requirement</th><th>Functional requirements</th><th>Test cases</th><th>UAT</th><th>Change</th></tr></thead><tbody>
+    ${b.brs.map(r => `<tr><td style="min-width:220px"><div class="cellstack"><span><span class="idref">${r.id}</span> ${pill(r.status, r.status==='Baselined'||r.status==='Verified'?'good':'')}</span><b>${esc(r.title)}</b><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span></div></td>
+      <td style="min-width:200px"><div class="cellstack">${r.frs.map(f => `<span><span class="idref">${f.id}</span> <span class="muted">· ${esc(f.sys)} · ${f.cx}</span></span>`).join('') || pill('No FR', b.gate>2?'crit':'')}</div></td>
+      <td style="min-width:150px"><div class="cellstack">${r.tcs.map(t => `<span><span class="idref">${t.id}</span> ${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}</div></td>
+      <td>${b.uat ? `<span class="idref">${b.uat.id}</span><br>${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'')}` : '<span class="muted">—</span>'}</td>
+      <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="empty">No business requirements yet. They are written once the BCR passes G1.</p>';
+
+  const kv = obj => `<div class="kv">${Object.entries(obj).map(([k,v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>`;
+  return `
+  <div class="crumbs"><button class="btn link" type="button" data-act="nav" data-view="register">BCR Register</button><span>›</span><span class="mono">${b.id}</span></div>
+  <section class="detail-head">
+    <div class="idline"><span class="idref" style="font-size:1rem">${b.id}</span>${pill(statusOf(b), statusKind(b))}${pill(b.priority, priKind(b.priority))}${b.reg?pill('Regulatory driver','warn'):''}</div>
+    <h1>${esc(b.title)}</h1>
+    <p style="max-width:70ch">${esc(b.just)}</p>
+    <dl class="meta">
+      <div><dt>Business area · Domain</dt><dd>${esc(b.area)} · ${esc(b.domain)}</dd></div>
+      <div><dt>Requestor</dt><dd>${esc(b.requestor)}</dd></div>
+      <div><dt>Business sponsor</dt><dd>${esc(b.sponsor)}</dd></div>
+      <div><dt>Impacted systems</dt><dd>${b.systems.map(esc).join(', ')}</dd></div>
+      <div><dt>Target go-live</dt><dd>${fmtDate(b.target)}</dd></div>
+      <div><dt>Created</dt><dd>${fmtDate(b.created)}</dd></div>
+    </dl>
+  </section>
+  <ol class="stepper" aria-label="Gate progress">${steps}</ol>
+  <div class="two">
+    <section class="panel" style="display:grid;gap:14px"><header style="margin:0"><h2>Traceability matrix</h2><span class="muted" style="font-size:.8rem">${b.brs.length} BRs · ${b.brs.reduce((n,r)=>n+r.frs.length,0)} FRs · ${tcsAll.length} tests</span></header>${rtm}</section>
+    ${decision}
+  </div>
+  <div class="three">
+    <section class="card"><div class="label">Level 4 · Solution assessment</div>${b.sa ? `<h3><span class="idref">${b.sa.id}</span> ${pill(b.sa.status, b.sa.status==='Approved'?'good':'accent')}</h3>
+      ${kv({'Vendor':esc(b.sa.vendor),'Approach':esc(b.sa.approach),'Risk rating':pill(b.sa.risk, priKind(b.sa.risk)),'Effort':b.sa.effort+' person-days','Architecture':esc(b.sa.arch),'InfoSec':esc(b.sa.sec)})}` : '<p class="empty">Not started. Raised after the BRs are baselined.</p>'}</section>
+    <section class="card"><div class="label">Level 5 · UAT sign-off</div>${b.uat ? `<h3><span class="idref">${b.uat.id}</span> ${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'accent')}</h3>
+      ${kv({'Business owner':esc(b.uat.owner),'Result':esc(b.uat.result),'Sign-off date':fmtDate(b.uat.date),'Tests passed':`${tcsAll.filter(t=>t.r==='Pass').length} of ${tcsAll.length}`})}` : '<p class="empty">Not started. Opened when testing begins.</p>'}</section>
+    <section class="card"><div class="label">Level 6 · Change request</div>${b.chg ? `<h3><span class="idref">${b.chg.id}</span> ${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'accent')}</h3>
+      ${kv({'Change type':esc(b.chg.type),'Risk level':pill(b.chg.risk, priKind(b.chg.risk)),'CAB approval':esc(b.chg.cab),'Planned release':fmtDate(b.chg.release),'PIR':esc(b.chg.pir)})}` : '<p class="empty">Created automatically when UAT is signed off.</p>'}</section>
+  </div>
+  <section class="panel"><header><h2>Record history</h2><span class="muted" style="font-size:.8rem">From the Gate Decisions Log and item versions</span></header>
+    ${hist.length ? `<ul class="timeline">${hist.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br><span class="trace">${esc(a.rec)}</span> · ${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty">No entries yet.</p>'}
+  </section>`;
+}
+
+function vApprovals(){
+  const q = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).sort((a,b) => (isBreach(b)-isBreach(a)) || b.gate - a.gate);
+  return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Gate decisions waiting on the governance office and approvers. Approvers are resolved from the Approval Matrix list by business area and risk.</p></div></div>
+  <div class="tbl-wrap"><table><thead><tr><th>Gate</th><th>Request</th><th>Approvers</th><th>Waiting</th><th>SLA</th><th></th></tr></thead><tbody>
+  ${q.map(b => { const g = GATES[b.gate]; const d = daysAtGate(b);
+    return `<tr><td><span class="mono">${g.code}</span><br><b>${g.name}</b></td><td><span class="idref">${b.id}</span><br>${esc(b.title)}</td><td style="max-width:260px">${esc(g.who)}</td>
+    <td class="num">${d} working day${d===1?'':'s'}</td><td>${isBreach(b) ? pill(`Breached (${g.sla}d)`, 'crit') : pill(`${g.sla - d} day${g.sla-d===1?'':'s'} left`, 'good')}</td>
+    <td><button class="btn" type="button" data-act="open" data-id="${b.id}">Review</button></td></tr>`; }).join('')}
+  </tbody></table></div>`;
+}
+
+function vAudit(){
+  const f = state.auditFilter;
+  const rows = DB.audit.filter(a => !f || a.rec.startsWith(f));
+  return `<div class="pagehead"><div><h1>Audit log</h1><p class="muted">Append-only Gate Decisions Log. Only the flow service account writes here; Internal Audit has read access. Purview audit search covers views, edits and permission changes on top of this.</p></div></div>
+  <div class="filters"><select id="f-audit" aria-label="Filter by request"><option value="">All requests</option>${DB.bcrs.map(b => `<option ${f===b.id?'selected':''}>${b.id}</option>`).join('')}</select><span class="muted">${rows.length} entries</span></div>
+  <div class="tbl-wrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record (trace key)</th><th>Detail</th></tr></thead><tbody>
+  ${rows.map(a => `<tr><td class="num">${fmtTime(a.t)}</td><td>${esc(a.who)}</td><td><b>${esc(a.act)}</b></td><td class="trace">${esc(a.rec)}</td><td>${esc(a.det)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function vFramework(){
+  const L = [
+    ['L1','Business Change Request','BCR Register','High-level business drivers and change initiatives.','BCR ID, Title, Business Area, Domain, Requestor, Business Sponsor, Business Justification, Impacted Systems, Priority, Status'],
+    ['L2','Business Requirements','Business Requirements','What the business needs, linked to its parent BCR.','BR ID, Parent BCR, Requirement Title, Requirement Statement, Business Justification, Priority, Acceptance Criteria, Business Owner, Status'],
+    ['L3','Functional Requirements','Functional Requirements','Functional specifications linked to a specific BR.','FR ID, Parent BR, Functional Requirement, Impacted System, Complexity, Status'],
+    ['L4','Solution Assessment','Solution Assessments','Feasibility, vendor involvement and architectural risk for the BCR.','Assessment ID, Parent BCR, Impacted Systems, Vendor Involvement, Implementation Approach, Risk Rating, Estimated Effort, Architecture Approval, Status'],
+    ['L5','Testing & UAT','Test Cases · UAT Sign-Offs','Test cases linked to BRs and the business acceptance sign-off.','Test Case ID, Related BR, Description, Result · UAT ID, Parent BCR, Business Owner, UAT Result, Sign-Off Date, Status'],
+    ['L6','Change Request','Change Requests','Release management, deployment and post-implementation review.','Change ID, Related BCR, Change Type, Risk Level, CAB Approval, Planned Release Date, Deployment Status, Post Implementation Review']
+  ];
+  return `<div class="pagehead"><div><h1>Framework</h1><p class="muted">The six-level traceability model and the gates that connect it. Each level is a SharePoint list in this site; each child record looks up to its parent.</p></div></div>
+  <section class="ref-levels">${L.map(l => `<article class="lvl"><span class="n">${l[0]} · list: ${esc(l[2])}</span><h3>${esc(l[1])}</h3><p>${esc(l[3])}</p><div class="fields"><span class="label">Fields</span><br>${esc(l[4])}</div></article>`).join('')}</section>
+  <section class="panel"><header><h2>Gate approval matrix</h2><span class="muted" style="font-size:.8rem">SLAs in working days, Sunday–Thursday</span></header>
+  <div class="tbl-wrap"><table><thead><tr><th>Gate</th><th>Decision</th><th>Approvers</th><th>SLA</th></tr></thead><tbody>
+  ${GATES.map(g => `<tr><td class="mono">${g.code}</td><td><b>${g.name}</b></td><td>${esc(g.who)}</td><td class="num">${g.sla ? g.sla+' days' : 'Immediate'}</td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section class="panel"><header><h2>Controls in this prototype</h2></header>
+    <ul style="margin:0;padding-left:18px;display:grid;gap:6px;max-width:75ch">
+      <li>A gate approves only when its entry criteria pass, as the Power Automate flow would check them.</li>
+      <li>Segregation of duties: a requestor cannot approve their own BCR, and a test executor cannot sign UAT.</li>
+      <li>Every decision is written to the audit log with the approver, time and comments.</li>
+      <li>UAT sign-off raises the change request automatically; CAB approval deploys and closes the BCR.</li>
+    </ul></section>`;
+}
+
+function vNew(){
+  const people = ['Ahmed Janahi','Fatima Al-Sayed','Zainab Mansoor','Khalid Rashed','Reem Bucheeri','Ebrahim Saad'];
+  const fl = state.flash;
+  return `<div class="crumbs"><button class="btn link" type="button" data-act="nav" data-view="register">BCR Register</button><span>›</span><span>New request</span></div>
+  <div class="pagehead"><div><h1>New business change request</h1><p class="muted">Submitting runs the G0 check. A BCR ID is issued and the request goes to the sponsor for G1 approval.</p></div></div>
+  <form class="panel form-grid" id="newbcr" novalidate>
+    <div class="field full"><label for="n-title">Title</label><input id="n-title" placeholder="For example: Salary advance in mobile app"></div>
+    <div class="field"><label for="n-area">Business area</label><select id="n-area">${AREAS.map(a=>`<option>${a}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-domain">Domain</label><input id="n-domain" placeholder="For example: Lending"></div>
+    <div class="field"><label for="n-req">Requestor</label><select id="n-req">${people.map(p=>`<option>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-sp">Business sponsor</label><select id="n-sp">${people.map((p,i)=>`<option ${i===1?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-pri">Priority</label><select id="n-pri">${['Critical','High','Medium','Low'].map(p=>`<option ${p==='Medium'?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label for="n-target">Target go-live</label><input id="n-target" type="date" value="2027-03-31"></div>
+    <fieldset class="field full" style="border:0;padding:0;margin:0"><legend style="font-size:.8rem;font-weight:600;margin-bottom:4px">Impacted systems</legend>
+      <div class="checks">${SYSTEMS.map((s,i)=>`<label><input type="checkbox" id="n-sys-${i}" value="${s}"> ${s}</label>`).join('')}</div></fieldset>
+    <div class="field full"><label for="n-just">Business justification</label><textarea id="n-just" placeholder="The business driver, expected benefit and any regulatory obligation"></textarea></div>
+    <label class="full" style="display:flex;gap:8px;align-items:center;font-size:.88rem"><input type="checkbox" id="n-reg"> Driven by a regulatory requirement (adds Compliance to G1)</label>
+    ${fl ? `<div class="msg err full" role="alert">${esc(fl.text)}</div>` : ''}
+    <div class="actions full"><button class="btn primary" type="submit">Submit request</button><button class="btn" type="button" data-act="nav" data-view="register">Cancel</button></div>
+  </form>`;
+}
+
+/* ---------- actions ---------- */
+function decide(kind){
+  const b = getBcr(state.bcr); const who = document.getElementById('d-who').value; const note = document.getElementById('d-note').value.trim();
+  const g = GATES[b.gate];
+  if (kind === 'return'){
+    if (!note){ state.flash = {ok:false, text:'Add a comment so the owner knows what to fix.'}; return render(); }
+    b.returned = true; log(who, `Gate ${g.code} returned`, b.id, note);
+    state.flash = {ok:true, text:`Returned to the owner. The decision is logged.`}; toast(`${b.id} returned at ${g.code}`); return render();
+  }
+  if (b.gate === 1 && who === b.requestor){ state.flash = {ok:false, text:'Segregation of duties: the requestor cannot approve their own BCR. Choose the sponsor or Demand Manager.'}; log('svc-reqgov (flow F2)','Approval blocked', b.id, `${who} is the requestor`); return render(); }
+  const executors = b.brs.flatMap(r=>r.tcs).map(t=>t.by).filter(Boolean);
+  if (b.gate === 5 && executors.includes(who)){ state.flash = {ok:false, text:`Segregation of duties: ${who} executed test cases for this BCR and cannot sign UAT.`}; log('svc-reqgov (flow F7)','Sign-off blocked', b.id+' / '+(b.uat?.id||'UAT'), `${who} is a test executor`); return render(); }
+  if (!approverOptions(b).expected.includes(who)){ state.flash = {ok:false, text:`${who} is not an approver for ${g.code} in the Approval Matrix.`}; return render(); }
+  const failed = criteria(b).filter(c => !c.ok);
+  if (failed.length){ state.flash = {ok:false, text:`${g.code} cannot be approved yet: ${failed.map(c=>c.t.toLowerCase()).join('; ')}.`}; log('svc-reqgov (flow)', 'Gate entry check failed', b.id, failed.map(c=>c.t).join('; ')); return render(); }
+
+  b.returned = false;
+  log(who, `Gate ${g.code} approved`, b.id, note || g.name + ' approved');
+  if (b.gate === 2) b.brs.forEach(r => r.status = 'Baselined');
+  if (b.gate === 3) b.brs.forEach(r => r.frs.forEach(f => f.st = 'Approved'));
+  if (b.gate === 4 && b.sa){ b.sa.status = 'Approved'; b.sa.arch = 'Approved'; b.sa.sec = 'Cleared'; }
+  if (b.gate === 5){
+    if (!b.uat) b.uat = {id:'UAT-001', owner:who};
+    Object.assign(b.uat, {result:'Accepted', date:TODAY, status:'Signed Off', owner:who});
+    b.brs.forEach(r => r.status = 'Verified');
+    if (!b.chg){ const id = 'CHG-' + String(DB.chgCounter++).padStart(5,'0');
+      b.chg = {id, type:'Normal', risk:b.sa?.risk || 'Medium', cab:'Pending', release:addDays(TODAY,14), deploy:'Scheduled', pir:'Not Due'};
+      log('svc-reqgov (flow F8)','Change request created', `${b.id} / ${id}`, 'Routed to CAB as a Normal change'); }
+  }
+  if (b.gate === 6 && b.chg){ Object.assign(b.chg, {cab:'Approved', deploy:'Deployed', pir:'Completed – Successful'});
+    log('svc-reqgov (flow F9)','BCR closed', b.id, 'Deployed, PIR completed, records locked'); }
+  b.gate += 1; b.since = TODAY;
+  state.flash = {ok:true, text: b.gate === 7 ? 'CAB approved. The change is deployed and the BCR is closed.' : `${g.code} approved. The request now waits on ${GATES[b.gate].code} ${GATES[b.gate].name}.`};
+  toast(`${b.id}: ${g.code} approved`); render();
+}
+
+function submitNew(){
+  const v = id => document.getElementById(id).value.trim();
+  const systems = SYSTEMS.filter((s,i) => document.getElementById('n-sys-'+i).checked);
+  const missing = [];
+  if (!v('n-title')) missing.push('title'); if (!v('n-domain')) missing.push('domain');
+  if (!systems.length) missing.push('at least one impacted system'); if (v('n-just').length < 20) missing.push('a business justification of 20 characters or more');
+  if (missing.length){ state.flash = {ok:false, text:`G0 check failed. Add ${missing.join(', ')}.`}; return render(); }
+  if (v('n-req') === v('n-sp')){ state.flash = {ok:false, text:'G0 check failed. The business sponsor must be a different person from the requestor.'}; return render(); }
+  const id = 'BCR-2026-' + String(++DB.counter).padStart(3,'0');
+  DB.bcrs.unshift({id, title:v('n-title'), area:v('n-area'), domain:v('n-domain'), requestor:v('n-req'), sponsor:v('n-sp'), just:v('n-just'), systems,
+    priority:v('n-pri'), gate:1, since:TODAY, reg:document.getElementById('n-reg').checked, target:v('n-target') || null, created:TODAY, brs:[], sa:null, uat:null, chg:null});
+  log('svc-reqgov (flow F1)','ID issued', id, 'G0 validation passed; status set to Submitted');
+  state.flash = null; toast(`${id} submitted for G1 approval`); go('detail', id);
+}
+
+let tt;
+function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, 2800); }
+
+function render(){
+  renderTabs();
+  const v = {overview:vOverview, register:vRegister, detail:vDetail, approvals:vApprovals, audit:vAudit, framework:vFramework, new:vNew}[state.view] || vOverview;
+  document.getElementById('app').innerHTML = v();
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset.act;
+  if (a === 'nav'){ state.flash = null; go(t.dataset.view); }
+  if (a === 'open'){ state.flash = null; go('detail', t.dataset.id); }
+  if (a === 'reset'){ DB = clone(SEED); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'decide') decide(e.submitter?.dataset.decision || 'approve');
+  if (e.target.id === 'newbcr') submitNew();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'f-q'){ state.regFilter.q = e.target.value; const pos = e.target.selectionStart; render(); const el = document.getElementById('f-q'); el.focus(); try{ el.setSelectionRange(pos,pos);}catch(_){} }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'f-area'){ state.regFilter.area = e.target.value; render(); }
+  if (e.target.id === 'f-pri'){ state.regFilter.pri = e.target.value; render(); }
+  if (e.target.id === 'f-audit'){ state.auditFilter = e.target.value; render(); }
+});
+const h = (location.hash || '').slice(1);
+if (['overview','register','approvals','audit','framework'].includes(h)) state.view = h;
+render();
+</script>
+</body>
+</html>
