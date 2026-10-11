@@ -233,8 +233,8 @@ const GATES = [
   {g:2, code:'G2', name:'FR approval', sla:5, who:'System Owner approves each FR; Lead BA confirms'},
   {g:3, code:'G3', name:'BR approval & baseline', sla:5, who:'Business Owner approves each BR; Lead BA baselines'},
   {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, InfoSec and Risk approve the SA; ARB chair confirms'},
-  {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'Business Owner (not a test executor)'},
-  {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager and CAB'}
+  {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'QA Lead approves tests; Business Owner signs UAT; Governance Office confirms'},
+  {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager / CAB approve; PIR completed; Change Manager closes'}
 ];
 const STATUS_AT = {1:'Submitted',2:'Approved · FRs in review',3:'BRs in review',4:'Under ARB review',5:'UAT pending sign-off',6:'Awaiting CAB',7:'Closed'};
 const PEOPLE = {
@@ -385,7 +385,7 @@ function renderTabs(){
   document.getElementById('tabs').innerHTML = TABS.map(([k,l]) =>
     `<button type="button" data-act="nav" data-view="${k}" ${state.view===k || (state.view==='detail' && k==='register') || (state.view==='new' && k==='register') ? 'aria-current="page"' : ''}>${l}${k==='approvals' ? `<span class="badge">${pending}</span>` : ''}</button>`).join('');
 }
-function go(view, bcr){ state.view = view; state.form = null; if (bcr !== undefined) state.bcr = bcr; if (view !== 'detail') state.flash = null; render(); window.scrollTo(0,0);
+function go(view, bcr){ state.view = view; state.form = null; state.notice = null; if (bcr !== undefined) state.bcr = bcr; if (view !== 'detail') state.flash = null; render(); window.scrollTo(0,0);
   try { if (['overview','register','approvals','audit','framework'].includes(view)) history.replaceState(null,'','#'+view); } catch(e){} }
 
 /* ---------- views ---------- */
@@ -446,14 +446,17 @@ function criteria(b){
   if (g === 3) b.brs.forEach(r => c.push({ok:OK_BR.includes(r.status), t:`${r.id} approved by its Business Owner`}));
   if (g === 4){ c.push({ok:!!b.sa, t:'Solution assessment recorded'}); if (b.sa) b.sa.approvals.forEach(ap => c.push({ok:SA_DONE.includes(ap.st), t:`${ap.role}: ${ap.st}`}));
     c.push({ok:!!b.sa && b.sa.status === 'Approved', t:'Solution assessment approved by every reviewer'}, {ok:b.brs.every(r=>r.frs.length), t:'All BRs decomposed into FRs'}); }
-  if (g === 5){ b.brs.forEach(r => c.push({ok:r.tcs.length > 0, t:`${r.id} has test coverage`}));
-    const all = b.brs.flatMap(r=>r.tcs); c.push({ok:all.length && all.every(t=>t.r==='Pass'), t:`All test cases pass (${all.filter(t=>t.r==='Pass').length} of ${all.length})`}); }
-  if (g === 6) c.push({ok:!!(b.uat && b.uat.status==='Signed Off'), t:'UAT signed off'}, {ok:!!b.chg, t:'Change request raised with rollback plan'});
+  if (g === 5){ b.brs.forEach(r => c.push({ok:r.tcs.some(t => t.ds === 'Approved'), t:`${r.id} has an approved test case`}));
+    const all = b.brs.flatMap(r=>r.tcs); c.push({ok:all.length && all.every(t=>t.r==='Pass'), t:`All test cases pass (${all.filter(t=>t.r==='Pass').length} of ${all.length})`});
+    c.push({ok:!!(b.uat && b.uat.status==='Signed Off'), t:'UAT signed off by the Business Owner'}); }
+  if (g === 6){ const ch = b.chg;
+    c.push({ok:!!ch, t:'Change request raised'}, {ok:!!ch && ch.status==='Approved', t:'Change approved (CAB / Change Manager / ECAB)'},
+      {ok:!!ch && ch.deploy==='Deployed', t:'Deployment recorded as successful'}, {ok:!!ch && String(ch.pir).startsWith('Completed'), t:'Post-implementation review completed'}); }
   return c;
 }
 function approverOptions(b){
   const owner = b.brs[0]?.owner || b.sponsor;
-  const map = {1:[b.sponsor, PEOPLE.demand], 2:[PEOPLE.ba], 3:[PEOPLE.ba], 4:[PEOPLE.arb], 5:[owner], 6:[PEOPLE.chg]};
+  const map = {1:[b.sponsor, PEOPLE.demand], 2:[PEOPLE.ba], 3:[PEOPLE.ba], 4:[PEOPLE.arb], 5:[PEOPLE.demand], 6:[PEOPLE.chg]};
   const list = [...(map[b.gate]||[])];
   [b.requestor, PEOPLE.qa].forEach(p => { if (!list.includes(p)) list.push(p); });
   return {expected: map[b.gate]||[], list};
@@ -630,7 +633,8 @@ function saveEdit(){
 }
 
 function reqForm(b){
-  const f = state.form; if (!f || String(f.kind).startsWith('sa-')) return '';
+  const f = state.form; if (!f || /^(sa|uat|chg)-/.test(String(f.kind))) return '';
+  if (String(f.kind).startsWith('tc-')) return tcForm(b);
   if (f.kind === 'rfr' || f.kind === 'rbr') return reviewForm(b);
   if (f.kind === 'vfr' || f.kind === 'vbr') return viewPanel(b);
   if (f.kind === 'efr' || f.kind === 'ebr') return editForm(b);
@@ -714,7 +718,7 @@ function vDetail(){
       return `<tr><td style="min-width:230px"><div class="cellstack"><span><button type="button" class="linkbtn idref" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${r.id}">${r.id}</button> ${pill(r.status, stKind(r.status))}</span><button type="button" class="linkbtn" style="font-weight:600;color:var(--ink)" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${r.id}">${esc(r.title)}</button><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span>
         ${brOpen ? `<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn link small" type="button" data-act="review" data-kind="rbr" data-id="${b.id}" data-br="${r.id}">${r.status === 'Rejected' ? 'Revise' : 'Review BR'}</button><span class="muted" style="font-size:.78rem">${okN} of ${r.frs.length} FRs approved</span></span>` : ''}</div></td>
       <td style="min-width:240px"><div class="cellstack">${r.frs.map(f => `<span title="${esc(f.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" class="linkbtn idref" data-act="view" data-kind="vfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.id}</button><span class="muted" style="font-size:.82rem">${esc(f.sys)} · ${f.cx}</span>${pill(f.st, stKind(f.st))}${canEdit && (PENDING.includes(f.st) || f.st === 'Rejected') ? `<button class="btn link small" type="button" data-act="review" data-kind="rfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.st === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}</span>`).join('') || pill('No FR', b.gate>2?'crit':'')}${canEdit ? `<button class="btn link small" type="button" data-act="addfr" data-br="${r.id}" style="justify-self:start">+ Add FR</button>` : ''}</div></td>
-      <td style="min-width:150px"><div class="cellstack">${r.tcs.map(t => `<span><span class="idref">${t.id}</span> ${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}</div></td>
+      <td style="min-width:190px"><div class="cellstack">${r.tcs.map(t => `<span title="${esc(t.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" class="linkbtn idref" data-act="tc" data-kind="tc-view" data-br="${r.id}" data-tc="${t.id}">${t.id}</button>${t.ds !== 'Approved' ? pill('Design ' + t.ds.toLowerCase(), t.ds === 'Rejected' ? 'crit' : '') : ''}${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}${tcCan(b) && !state.form ? `<button class="btn link small" type="button" data-act="tc" data-kind="tc-add" data-br="${r.id}" style="justify-self:start">+ Add test</button>` : ''}</div></td>
       <td>${b.uat ? `<span class="idref">${b.uat.id}</span><br>${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'')}` : '<span class="muted">—</span>'}</td>
       <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<p class="empty">${canEdit ? 'No business requirements yet. Add the first one to start the G2 baseline.' : 'No business requirements yet. They are written once the BCR passes G1.'}</p>`;
@@ -742,12 +746,10 @@ function vDetail(){
   </div>
   <div class="three">
     ${saCard(b)}
-    <section class="card"><div class="label">Level 5 · UAT sign-off</div>${b.uat ? `<h3><span class="idref">${b.uat.id}</span> ${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'accent')}</h3>
-      ${kv({'Business owner':esc(b.uat.owner),'Result':esc(b.uat.result),'Sign-off date':fmtDate(b.uat.date),'Tests passed':`${tcsAll.filter(t=>t.r==='Pass').length} of ${tcsAll.length}`})}` : '<p class="empty">Not started. Opened when testing begins.</p>'}</section>
-    <section class="card"><div class="label">Level 6 · Change request</div>${b.chg ? `<h3><span class="idref">${b.chg.id}</span> ${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'accent')}</h3>
-      ${kv({'Change type':esc(b.chg.type),'Risk level':pill(b.chg.risk, priKind(b.chg.risk)),'CAB approval':esc(b.chg.cab),'Planned release':fmtDate(b.chg.release),'PIR':esc(b.chg.pir)})}` : '<p class="empty">Created automatically when UAT is signed off.</p>'}</section>
+    ${uatCard(b)}
+    ${chgCard(b)}
   </div>
-  ${saForm(b)}
+  ${saForm(b)}${uatForm(b)}${chgForm(b)}
   <section class="panel"><header><h2>Record history</h2><span class="muted" style="font-size:.8rem">From the Gate Decisions Log and item versions</span></header>
     ${hist.length ? `<ul class="timeline">${hist.map(a => `<li><time>${fmtTime(a.t)}</time><div><b>${esc(a.act)}</b> <span class="muted">by ${esc(a.who)}</span><br><span class="trace">${esc(a.rec)}</span> · ${esc(a.det)}</div></li>`).join('')}</ul>` : '<p class="empty">No entries yet.</p>'}
   </section>`;
@@ -765,6 +767,20 @@ function saReviewers(sa){
 }
 function normalize(db){
   db.bcrs.forEach(b => {
+    b.brs.forEach(r => r.tcs.forEach(t => Object.assign(t, {ds:t.ds || 'Approved', type:t.type || 'SIT', author:t.author || 'Omar Saleh', on:t.on || (t.by ? '2026-10-08' : null), defect:t.defect || ''})));
+    b.tcSeq = maxNum(b.brs.flatMap(r => r.tcs.map(t => t.id)));
+    b.uatSeq = b.uat ? 1 : 0;
+    if (b.uat && !b.uat.author){
+      const winEnd = b.uat.date || '2026-10-08';
+      Object.assign(b.uat, {author:QA_LEAD, start:addDays(winEnd, -10), end:winEnd, scope:'End-to-end business journeys for every baselined BR, in the UAT environment with masked production data.', note:'', ver:1});
+      if (b.uat.result === '—') b.uat.result = '';
+    }
+    if (b.chg && !b.chg.approvals){
+      const c = b.chg; Object.assign(c, {author:CHG_AUTHOR, ver:1, window:'Fri 23:00–02:00', rollback:'Redeploy the previous release package and restore configuration from the pre-change backup.'});
+      const revs = chgReviewers(c.type);
+      if (c.cab === 'Approved'){ c.status = 'Approved'; c.approvals = revs.map(r => ({...r, st:'Approved', note:''})); }
+      else { c.status = 'Submitted'; c.deploy = 'Not Scheduled'; c.approvals = revs.map((r, i) => ({...r, st: i === 0 ? 'Approved' : 'Pending', note:''})); }
+    }
     b.saSeq = b.sa ? 1 : 0;
     const sa = b.sa; if (!sa || sa.approvals) return;
     sa.systems = sa.systems || [...b.systems]; sa.author = SA_AUTHOR;
@@ -779,7 +795,7 @@ function normalize(db){
 const saCanChange = b => isOpen(b) && b.gate >= 2 && b.gate <= 4;
 
 function saCard(b){
-  const sa = b.sa, busy = state.form && String(state.form.kind).startsWith('sa-');
+  const sa = b.sa, busy = !!state.form;
   const head = '<div class="label">Level 4 · Solution assessment</div>';
   if (!sa) return `<section class="card">${head}<p class="empty">${saCanChange(b) ? 'No assessment yet. It must be approved before G4.' : b.gate < 2 ? 'Raised once the BCR is approved at G1.' : 'No assessment recorded.'}</p>
     ${saCanChange(b) && !busy ? '<button class="btn" type="button" data-act="sa" data-kind="sa-add" style="justify-self:start">+ Add solution assessment</button>' : ''}</section>`;
@@ -892,11 +908,330 @@ function saDelete(){
   b.sa = null; state.form = null; toast(`${sa.id} deleted`); render();
 }
 
+/* ---------- shared form pieces ---------- */
+const CANCEL = '<button class="btn" type="button" data-act="cancelform">Cancel</button>';
+const ERRBOX = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
+function shell(id, label, title, inner, btns, isForm = true){
+  const tag = isForm ? 'form' : 'section';
+  return `<${tag} class="inline-form form-grid" id="${id}" ${isForm ? 'novalidate' : ''}><div class="full"><div class="label">${label}</div><h3 style="margin-top:2px">${title}</h3></div>${inner}${ERRBOX}<div class="actions full">${btns}</div></${tag}>`;
+}
+function delPanel(title, msg){
+  return shell('delform', 'Delete', title, `<p class="full">${msg}</p><div class="field full"><label for="del-note">Reason for deletion</label><textarea id="del-note" placeholder="Required"></textarea></div>`,
+    `<button class="btn danger" type="button" data-act="dodelete">Delete</button>${CANCEL}`, false);
+}
+const sel = (id, opts, cur) => `<select id="${id}">${opts.map(o => `<option ${o===cur?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+const fld = (id, label, control, full) => `<div class="field ${full?'full':''}"><label for="${id}">${label}</label>${control}</div>`;
+const val = id => document.getElementById(id).value.trim();
+function notice(where){ const n = state.notice; return n && n.where === where ? `<div class="msg ${n.ok?'ok':'err'}" role="status">${esc(n.text)}</div>` : ''; }
+const anyForm = () => !!state.form;
+
+/* ---------- Level 5: test cases ---------- */
+const QA_LEAD = 'Latifa Bucheeri', TESTERS = ['Omar Saleh','Huda Saleem'], TC_AUTHOR = 'Huda Saleem';
+const uatLocked = b => !!b.uat && b.uat.status === 'Signed Off';
+const tcCan = b => isOpen(b) && b.gate >= 2 && !uatLocked(b);
+function uatReopenIfPending(b, why){
+  if (b.uat && b.uat.status === 'Pending Sign-Off'){ b.uat.status = 'In Progress'; log('svc-reqgov (flow F6)', 'UAT sign-off withdrawn', `${b.id} / ${b.uat.id}`, why); }
+}
+function tcForm(b){
+  const f = state.form, br = b.brs.find(r => r.id === f.br), tc = f.tc ? br.tcs.find(t => t.id === f.tc) : null;
+  const trace = `${b.id} / ${br.id} / ${tc ? tc.id : 'TC-' + pad3(b.tcSeq + 1)}`, can = tcCan(b);
+  if (f.kind === 'tc-view'){
+    const btn = (kind, label, cls = '') => `<button class="btn ${cls}" type="button" data-act="tc" data-kind="${kind}" data-br="${br.id}" data-tc="${tc.id}">${label}</button>`;
+    const btns = [can ? btn('tc-edit','Edit') : '', can && tc.ds === 'Draft' ? btn('tc-review','Review design','primary') : '', can && tc.ds === 'Approved' ? btn('tc-result', tc.r === 'Not Run' ? 'Record result' : 'Re-run','primary') : '',
+      can && tc.r === 'Not Run' ? btn('tc-del','Delete','danger') : ''].join('');
+    return `<section class="inline-form form-grid" id="viewitem"><div class="full" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+      <div><div class="label">Test case · version ${tc.ver || 1}</div><h3 style="margin-top:2px"><span class="idref">${trace}</span> ${pill(tc.r, resKind(tc.r))}</h3></div><div class="actions">${btns}<button class="btn" type="button" data-act="cancelform">Close</button></div></div>
+      <div class="viewgrid full"><span>Test steps</span><span>${esc(tc.d)}</span><span>Related BR</span><span><button type="button" class="linkbtn" data-act="view" data-kind="vbr" data-id="${b.id}" data-br="${br.id}">${br.id} · ${esc(br.title)}</button></span>
+        <span>Test type</span><span>${esc(tc.type)}</span><span>Design approval</span><span>${pill(tc.ds, stKind(tc.ds))} <span class="muted">QA Lead: ${QA_LEAD}</span></span>
+        <span>Result</span><span>${pill(tc.r, resKind(tc.r))}</span><span>Executed</span><span>${tc.by ? `${esc(tc.by)}, ${fmtDate(tc.on)}` : 'Not yet'}</span>
+        <span>Defect</span><span>${esc(tc.defect || '—')}</span><span>Author</span><span>${esc(tc.author)}</span></div>
+      ${uatLocked(b) ? '<p class="muted full" style="font-size:.85rem">UAT is signed off, so this test case is locked.</p>' : ''}
+      <div class="full"><div class="label" style="margin-bottom:4px">History</div>${itemHistory(trace)}</div></section>`;
+  }
+  if (f.kind === 'tc-add' || f.kind === 'tc-edit'){
+    const v = tc || {d:'', type:'SIT'};
+    const warn = tc && (tc.ds !== 'Draft' || tc.r !== 'Not Run') ? '<p class="muted full" style="font-size:.85rem">Saving a change returns the design to Draft for QA Lead re-approval and resets the result to Not Run.</p>' : '';
+    return shell('tcedit', `${tc ? 'Edit' : 'New'} test case for ${br.id}`, `<span class="idref">${trace}</span>`,
+      `${warn}${fld('tc-desc','Test steps and expected result', `<textarea id="tc-desc" placeholder="Steps, test data and the expected result">${esc(v.d)}</textarea>`, true)}${fld('tc-type','Test type', sel('tc-type',['SIT','UAT','Regression','Security','Performance'], v.type))}`,
+      `<button class="btn primary" type="submit">${tc ? 'Save changes' : 'Save as draft'}</button>${CANCEL}`);
+  }
+  if (f.kind === 'tc-review') return shell('tcreview', 'Approve test case design', `<span class="idref">${trace}</span>`,
+    `<p class="full">${esc(tc.d)}</p>${fld('rv-who','Decision recorded by', sel('rv-who', [...new Set([QA_LEAD, tc.author])], QA_LEAD))}${fld('rv-note','Comments', '<textarea id="rv-note" placeholder="Required when rejecting"></textarea>')}`,
+    `<button class="btn primary" type="submit" data-decision="approve">Approve design</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${CANCEL}`);
+  if (f.kind === 'tc-result') return shell('tcresult', 'Record test result', `<span class="idref">${trace}</span>`,
+    `<p class="full">${esc(tc.d)}</p>${fld('tc-r','Result', sel('tc-r',['Pass','Fail','Blocked'], 'Pass'))}${fld('tc-by','Executed by', sel('tc-by', TESTERS, tc.by || TESTERS[0]))}
+     ${fld('tc-defect','Defect reference', `<input id="tc-defect" placeholder="Required when the test fails, e.g. DEF-1042" value="${esc(tc.defect || '')}">`)}${fld('tc-note','Notes', '<textarea id="tc-note" placeholder="Optional"></textarea>')}`,
+    `<button class="btn primary" type="submit">Save result</button>${CANCEL}`);
+  if (f.kind === 'tc-del') return delPanel(`Delete ${trace}?`, 'The test case is moved to the site recycle bin. The deletion stays in the audit log and its ID is not reused.');
+  return '';
+}
+function tcSave(){
+  const b = getBcr(state.bcr), f = state.form, br = b.brs.find(r => r.id === f.br);
+  const d = val('tc-desc'), type = val('tc-type');
+  if (!d) return formError('Describe the test steps and the expected result.');
+  if (f.kind === 'tc-add'){
+    const id = 'TC-' + pad3(++b.tcSeq);
+    br.tcs.push({id, d, type, ds:'Draft', r:'Not Run', by:null, on:null, defect:'', author:TC_AUTHOR, ver:1});
+    log(TC_AUTHOR, 'Test case created', `${b.id} / ${br.id} / ${id}`, `Draft ${type} test; awaiting QA Lead design approval`);
+    uatReopenIfPending(b, `New test case ${id} added`);
+    state.form = {kind:'tc-view', br:br.id, tc:id}; toast(`${id} added to ${br.id}`); return render();
+  }
+  const tc = br.tcs.find(t => t.id === f.tc);
+  const changed = [d !== tc.d ? 'test steps' : '', type !== tc.type ? 'test type' : ''].filter(Boolean);
+  if (!changed.length) return formError('Nothing has changed.');
+  const reset = tc.ds !== 'Draft' || tc.r !== 'Not Run';
+  Object.assign(tc, {d, type}); tc.ver = (tc.ver || 1) + 1;
+  if (reset) Object.assign(tc, {ds:'Draft', r:'Not Run', by:null, on:null, defect:''});
+  log(TC_AUTHOR, 'Test case edited', `${b.id} / ${br.id} / ${tc.id}`, `Version ${tc.ver}: changed ${changed.join(', ')}${reset ? '; design back to Draft, result reset' : ''}`);
+  if (reset) uatReopenIfPending(b, `${tc.id} changed`);
+  state.form = {kind:'tc-view', br:br.id, tc:tc.id}; toast(`${tc.id} saved as version ${tc.ver}`); render();
+}
+function tcReview(decision){
+  const b = getBcr(state.bcr), f = state.form, br = b.brs.find(r => r.id === f.br), tc = br.tcs.find(t => t.id === f.tc);
+  const who = val('rv-who'), note = val('rv-note');
+  if (who === tc.author && who !== QA_LEAD) return formError(`Segregation of duties: ${who} wrote this test case and cannot approve its design.`);
+  if (who !== QA_LEAD) return formError(`The QA Lead (${QA_LEAD}) approves test case designs.`);
+  if (decision === 'reject' && !note) return formError('Add a comment so the author knows what to change.');
+  tc.ds = decision === 'reject' ? 'Rejected' : 'Approved';
+  log(who, `Test design ${tc.ds.toLowerCase()}`, `${b.id} / ${br.id} / ${tc.id}`, note || 'Ready for execution');
+  state.form = {kind:'tc-view', br:br.id, tc:tc.id}; toast(`${tc.id} design ${tc.ds.toLowerCase()}`); render();
+}
+function tcResult(){
+  const b = getBcr(state.bcr), f = state.form, br = b.brs.find(r => r.id === f.br), tc = br.tcs.find(t => t.id === f.tc);
+  const r = val('tc-r'), by = val('tc-by'), defect = val('tc-defect'), note = val('tc-note');
+  if (r === 'Fail' && !defect) return formError('Add the defect reference for a failed test.');
+  Object.assign(tc, {r, by, on:TODAY, defect: r === 'Pass' ? '' : defect});
+  log(by, 'Test executed', `${b.id} / ${br.id} / ${tc.id}`, `Result: ${r}${tc.defect ? ' · defect ' + tc.defect : ''}${note ? ' · ' + note : ''}`);
+  if (r !== 'Pass') uatReopenIfPending(b, `${tc.id} result is ${r}`);
+  state.form = {kind:'tc-view', br:br.id, tc:tc.id}; toast(`${tc.id}: ${r}`); render();
+}
+
+/* ---------- Level 5: UAT sign-off ---------- */
+const uatCanAdd = b => isOpen(b) && b.gate >= 3 && b.gate <= 5 && !b.uat;
+function uatCard(b){
+  const u = b.uat, head = '<div class="label">Level 5 · UAT sign-off</div>', all = b.brs.flatMap(r => r.tcs);
+  if (!u) return `<section class="card">${head}<p class="empty">${uatCanAdd(b) ? 'No UAT planned yet. It must be signed off before G5.' : b.gate < 3 ? 'Planned once the requirements are approved.' : 'No UAT recorded.'}</p>
+    ${uatCanAdd(b) && !anyForm() ? '<button class="btn" type="button" data-act="sa" data-kind="uat-add" style="justify-self:start">+ Plan UAT</button>' : ''}</section>`;
+  const kind = u.status === 'Signed Off' ? 'good' : u.status === 'Rejected' ? 'crit' : u.status === 'Pending Sign-Off' ? 'warn' : 'accent';
+  const live = isOpen(b) && b.gate <= 5 && !anyForm(), B = (act, kind, label, cls = '') => `<button class="btn small ${cls}" type="button" data-act="${act}" ${kind ? `data-kind="${kind}"` : ''}>${label}</button>`;
+  const btns = !live ? [] : {
+    'Planned': [B('uatstart','','Start UAT','primary'), B('sa','uat-edit','Edit'), B('sa','uat-del','Delete','danger')],
+    'In Progress': [B('uatrequest','','Request sign-off','primary'), B('sa','uat-edit','Edit')],
+    'Pending Sign-Off': [B('sa','uat-review','Review sign-off','primary')],
+    'Rejected': [B('uatreopen','','Reopen testing','primary'), B('sa','uat-edit','Edit')]
+  }[u.status] || [];
+  return `<section class="card">${head}<h3><span class="idref">${b.id} / ${u.id}</span> ${pill(u.status, kind)}</h3>
+    <div class="kv"><span>Business owner</span><span>${esc(u.owner)}</span><span>Window</span><span>${fmtDate(u.start)} – ${fmtDate(u.end)}</span><span>Scope</span><span>${esc(u.scope || '—')}</span>
+      <span>Tests passed</span><span>${all.filter(t => t.r === 'Pass').length} of ${all.length}</span><span>Result</span><span>${esc(u.result || '—')}</span><span>Sign-off date</span><span>${fmtDate(u.date)}</span>
+      ${u.note ? `<span>Conditions</span><span>${esc(u.note)}</span>` : ''}<span>Version</span><span>${u.ver || 1}</span></div>
+    ${notice('uat')}${btns.length ? `<div class="actions">${btns.join('')}</div>` : ''}</section>`;
+}
+function uatForm(b){
+  const f = state.form; if (!f || !String(f.kind).startsWith('uat-')) return '';
+  const u = b.uat, owners = [...new Set([...(u ? [u.owner] : []), ...b.brs.map(r => r.owner), b.sponsor])];
+  if (f.kind === 'uat-del') return delPanel(`Delete ${b.id} / ${u.id}?`, 'The UAT plan is moved to the site recycle bin. The deletion stays in the audit log and the next plan gets a new ID.');
+  if (f.kind === 'uat-review'){
+    const executors = [...new Set(b.brs.flatMap(r => r.tcs).map(t => t.by).filter(Boolean))];
+    const all = b.brs.flatMap(r => r.tcs);
+    return shell('uatreview', 'UAT sign-off', `<span class="idref">${b.id} / ${u.id}</span>`,
+      `<p class="full">${all.filter(t => t.r === 'Pass').length} of ${all.length} test cases passed across ${b.brs.length} business requirements. ${esc(u.scope || '')}</p>
+       ${fld('rv-who','Signed by', sel('rv-who', [...new Set([u.owner, ...executors, QA_LEAD])], u.owner))}${fld('rv-note','Comments or conditions', '<textarea id="rv-note" placeholder="Required for conditions or rejection"></textarea>')}`,
+      `<button class="btn primary" type="submit" data-decision="approve">Accept</button><button class="btn" type="submit" data-decision="conditions">Accept with conditions</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${CANCEL}`);
+  }
+  const v = f.kind === 'uat-edit' ? u : {owner:owners[0], start:TODAY, end:addDays(TODAY, 7), scope:''};
+  const id = f.kind === 'uat-edit' ? u.id : 'UAT-' + pad3(b.uatSeq + 1);
+  return shell('uatedit', `${f.kind === 'uat-edit' ? 'Edit' : 'Plan'} UAT`, `<span class="idref">${b.id} / ${id}</span>`,
+    `${fld('uat-owner','Business owner (signs off)', sel('uat-owner', owners, v.owner))}<div></div>
+     ${fld('uat-start','Start date', `<input id="uat-start" type="date" value="${esc(v.start)}">`)}${fld('uat-end','End date', `<input id="uat-end" type="date" value="${esc(v.end)}">`)}
+     ${fld('uat-scope','Scope and entry criteria', `<textarea id="uat-scope" placeholder="Journeys in scope, test environment, data, entry criteria">${esc(v.scope || '')}</textarea>`, true)}`,
+    `<button class="btn primary" type="submit">${f.kind === 'uat-edit' ? 'Save changes' : 'Save UAT plan'}</button>${CANCEL}`);
+}
+function uatSave(){
+  const b = getBcr(state.bcr), f = state.form, next = {owner:val('uat-owner'), start:val('uat-start'), end:val('uat-end'), scope:val('uat-scope')};
+  if (!next.start || !next.end) return formError('Set the start and end dates.');
+  if (next.end < next.start) return formError('The end date must be on or after the start date.');
+  if (!next.scope) return formError('Describe the scope and entry criteria.');
+  if (f.kind === 'uat-add'){
+    const id = 'UAT-' + pad3(++b.uatSeq);
+    b.uat = {id, ...next, status:'Planned', result:'', date:null, note:'', author:QA_LEAD, ver:1};
+    log(QA_LEAD, 'UAT planned', `${b.id} / ${id}`, `${fmtDate(next.start)} to ${fmtDate(next.end)}; sign-off by ${next.owner}`);
+  } else {
+    const u = b.uat, names = {owner:'business owner', start:'start date', end:'end date', scope:'scope'};
+    const changed = Object.keys(next).filter(k => next[k] !== u[k]);
+    if (!changed.length) return formError('Nothing has changed.');
+    Object.assign(u, next); u.ver = (u.ver || 1) + 1;
+    log(QA_LEAD, 'UAT plan edited', `${b.id} / ${u.id}`, `Version ${u.ver}: changed ${changed.map(k => names[k]).join(', ')}`);
+  }
+  state.form = null; toast(`${b.uat.id} saved`); render();
+}
+function uatAction(act){
+  const b = getBcr(state.bcr), u = b.uat, trace = `${b.id} / ${u.id}`;
+  state.notice = null;
+  if (act === 'start'){ u.status = 'In Progress'; log(QA_LEAD, 'UAT started', trace, 'Business users testing'); toast(`${u.id} started`); }
+  if (act === 'reopen'){ u.status = 'In Progress'; u.result = ''; log(QA_LEAD, 'UAT reopened', trace, 'Testing resumed after rejection'); toast(`${u.id} reopened`); }
+  if (act === 'request'){
+    const problems = [];
+    b.brs.forEach(r => { if (!r.tcs.some(t => t.ds === 'Approved')) problems.push(`${r.id} has no approved test case`); });
+    const all = b.brs.flatMap(r => r.tcs);
+    all.filter(t => t.ds !== 'Approved').forEach(t => problems.push(`${t.id} design is ${t.ds.toLowerCase()}`));
+    all.filter(t => t.ds === 'Approved' && t.r !== 'Pass').forEach(t => problems.push(`${t.id} is ${t.r}`));
+    if (problems.length){
+      state.notice = {where:'uat', ok:false, text:`Sign-off cannot be requested yet: ${problems.join('; ')}.`};
+      log('svc-reqgov (flow F6)', 'UAT readiness check failed', trace, problems.join('; '));
+    } else {
+      u.status = 'Pending Sign-Off';
+      log('svc-reqgov (flow F6)', 'UAT readiness check passed', trace, `${all.length} of ${all.length} tests pass; ${b.brs.length} of ${b.brs.length} BRs covered; sent to ${u.owner}`);
+      toast(`${u.id} sent to ${u.owner} for sign-off`);
+    }
+  }
+  render();
+}
+function uatReview(decision){
+  const b = getBcr(state.bcr), u = b.uat, who = val('rv-who'), note = val('rv-note'), trace = `${b.id} / ${u.id}`;
+  const executors = b.brs.flatMap(r => r.tcs).map(t => t.by).filter(Boolean);
+  if (executors.includes(who)){ log('svc-reqgov (flow F7)', 'Sign-off blocked', trace, `${who} is a test executor`); return formError(`Segregation of duties: ${who} executed test cases for this BCR and cannot sign UAT.`); }
+  if (who !== u.owner) return formError(`The Business Owner (${u.owner}) signs this UAT.`);
+  if (decision !== 'approve' && !note) return formError(decision === 'reject' ? 'Explain why UAT is rejected.' : 'Write the conditions in the comments.');
+  if (decision === 'reject'){ Object.assign(u, {status:'Rejected', result:'Rejected', note}); log(who, 'UAT rejected', trace, note); }
+  else { Object.assign(u, {status:'Signed Off', result: decision === 'conditions' ? 'Accepted with Conditions' : 'Accepted', date:TODAY, note});
+    log(who, 'UAT signed off', trace, `${u.result}${note ? ': ' + note : ''}; signer is not a test executor`); }
+  state.form = null; toast(`${u.id}: ${u.status.toLowerCase()}`); render();
+}
+
+/* ---------- Level 6: change request ---------- */
+const CHG_AUTHOR = 'Ahmed Fakhro', CAB_CHAIR = 'Jaffar Al-Mahroos';
+function chgReviewers(type){
+  if (type === 'Standard') return [{role:'Change Manager', who:PEOPLE.chg}];
+  if (type === 'Emergency') return [{role:'Emergency CAB (ECAB)', who:CAB_CHAIR}];
+  return [{role:'Change Manager', who:PEOPLE.chg}, {role:'Change Advisory Board (CAB)', who:CAB_CHAIR}];
+}
+const chgCanAdd = b => isOpen(b) && b.gate >= 5 && !b.chg;
+const chgNext = c => c.approvals.find(a => a.st === 'Pending');
+function chgCard(b){
+  const c = b.chg, head = '<div class="label">Level 6 · Change request</div>';
+  if (!c) return `<section class="card">${head}<p class="empty">${chgCanAdd(b) ? 'No change request yet. Normal and Standard changes need UAT sign-off first.' : 'Raised after UAT sign-off, or as an emergency change.'}</p>
+    ${chgCanAdd(b) && !anyForm() ? '<button class="btn" type="button" data-act="sa" data-kind="chg-add" style="justify-self:start">+ Raise change request</button>' : ''}</section>`;
+  const kind = c.status === 'Approved' ? 'good' : c.status === 'Rejected' ? 'crit' : c.status === 'Draft' ? '' : 'accent';
+  const live = isOpen(b) && !anyForm(), B = (act, k, label, cls = '') => `<button class="btn small ${cls}" type="button" data-act="${act}" ${k ? `data-kind="${k}"` : ''}>${label}</button>`;
+  const btns = [];
+  if (live){
+    if (c.status === 'Draft' || c.status === 'Rejected') btns.push(B('sa','chg-edit','Edit'), B('chgsubmit','', c.type === 'Emergency' ? 'Submit to ECAB' : 'Submit for approval','primary'), B('sa','chg-del','Delete','danger'));
+    if (c.status === 'Submitted') btns.push(B('sa','chg-edit','Edit'));
+    if (c.status === 'Approved' && c.deploy !== 'Deployed') btns.push(B('sa','chg-deploy','Record deployment','primary'));
+    if (c.status === 'Approved' && c.deploy === 'Deployed' && c.pir === 'Due') btns.push(B('sa','chg-pir','Record PIR','primary'));
+  }
+  const nxt = c.status === 'Submitted' ? chgNext(c) : null;
+  return `<section class="card">${head}<h3><span class="idref">${b.id} / ${c.id}</span> ${pill(c.status, kind)}</h3>
+    <div class="kv"><span>Change type</span><span>${esc(c.type)}</span><span>Risk level</span><span>${pill(c.risk, priKind(c.risk))}</span><span>Planned release</span><span>${fmtDate(c.release)}${c.window ? ', ' + esc(c.window) : ''}</span>
+      <span>Rollback plan</span><span>${esc(c.rollback || '—')}</span><span>CAB approval</span><span>${esc(c.cab)}</span><span>Deployment</span><span>${pill(c.deploy, c.deploy === 'Deployed' ? 'good' : /Fail|Rolled/.test(c.deploy) ? 'crit' : '')}</span>
+      <span>PIR</span><span>${esc(c.pir)}</span><span>Version</span><span>${c.ver || 1}</span></div>
+    ${c.approvals.length ? `<div style="display:grid;gap:6px"><div class="label">Approvals (in order)</div>
+      ${c.approvals.map((ap, i) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.83rem"><span style="flex:1 1 140px;min-width:0">${i + 1}. ${esc(ap.role)}<br><span class="muted">${esc(ap.who)}</span></span>${pill(ap.st, ap.st === 'Approved' ? 'good' : ap.st === 'Rejected' ? 'crit' : '')}
+        ${nxt === ap && live ? `<button class="btn link small" type="button" data-act="sa" data-kind="chg-review" data-role="${i}">Review</button>` : ''}</div>`).join('')}</div>` : ''}
+    ${notice('chg')}${btns.length ? `<div class="actions">${btns.join('')}</div>` : ''}</section>`;
+}
+function chgForm(b){
+  const f = state.form; if (!f || !String(f.kind).startsWith('chg-')) return '';
+  const c = b.chg;
+  if (f.kind === 'chg-del') return delPanel(`Delete ${b.id} / ${c.id}?`, 'The change request is moved to the site recycle bin and withdrawn from the CAB agenda. The deletion stays in the audit log.');
+  if (f.kind === 'chg-review'){ const ap = c.approvals[Number(f.role)];
+    return shell('chgreview', `${esc(ap.role)} decision`, `<span class="idref">${b.id} / ${c.id}</span>`,
+      `<p class="full">${esc(c.type)} change, ${esc(c.risk.toLowerCase())} risk, release ${fmtDate(c.release)}. Rollback: ${esc(c.rollback)}</p>
+       ${fld('rv-who','Decision recorded by', sel('rv-who', [...new Set([ap.who, c.author])], ap.who))}${fld('rv-note','Comments', '<textarea id="rv-note" placeholder="Required when rejecting"></textarea>')}`,
+      `<button class="btn primary" type="submit" data-decision="approve">Approve</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>${CANCEL}`); }
+  if (f.kind === 'chg-deploy') return shell('chgdeploy', 'Record deployment', `<span class="idref">${b.id} / ${c.id}</span>`,
+    `${fld('dp-outcome','Outcome', sel('dp-outcome', ['Deployed','Failed','Rolled Back'], 'Deployed'))}${fld('dp-date','Deployment date', `<input id="dp-date" type="date" value="${TODAY}">`)}${fld('dp-note','Notes', '<textarea id="dp-note" placeholder="Required if the deployment failed or was rolled back"></textarea>', true)}`,
+    `<button class="btn primary" type="submit">Save deployment</button>${CANCEL}`);
+  if (f.kind === 'chg-pir') return shell('chgpir', 'Post-implementation review', `<span class="idref">${b.id} / ${c.id}</span>`,
+    `${fld('pir-outcome','Outcome', sel('pir-outcome', ['Successful','Issues Raised'], 'Successful'))}<div></div>${fld('pir-note','Findings and follow-up actions', '<textarea id="pir-note" placeholder="Benefits realised, incidents, lessons learned"></textarea>', true)}`,
+    `<button class="btn primary" type="submit">Complete PIR</button>${CANCEL}`);
+  const v = f.kind === 'chg-edit' ? c : {type:'Normal', risk:b.sa?.risk || 'Medium', release:addDays(TODAY, 14), window:'', rollback:''};
+  const warn = f.kind === 'chg-edit' && c.status === 'Submitted' ? '<p class="muted full" style="font-size:.85rem">This change is with its approvers. Saving returns it to Draft and clears the approvals.</p>' : '';
+  return shell('chgedit', `${f.kind === 'chg-edit' ? 'Edit' : 'Raise'} change request`, `<span class="idref">${b.id} / ${f.kind === 'chg-edit' ? c.id : 'CHG-' + String(DB.chgCounter).padStart(5,'0')}</span>`,
+    `${warn}${f.kind === 'chg-add' ? fld('chg-itsm','ITSM ticket number (optional)', '<input id="chg-itsm" placeholder="CHG-00000, or leave blank to issue one">') + '<div></div>' : ''}
+     ${fld('chg-type','Change type', sel('chg-type', ['Normal','Standard','Emergency'], v.type))}${fld('chg-risk','Risk level', sel('chg-risk', ['Low','Medium','High','Critical'], v.risk))}
+     ${fld('chg-release','Planned release date', `<input id="chg-release" type="date" value="${esc(v.release)}">`)}${fld('chg-window','Implementation window', `<input id="chg-window" value="${esc(v.window || '')}" placeholder="e.g. Fri 23:00–02:00">`)}
+     ${fld('chg-rollback','Rollback plan', `<textarea id="chg-rollback" placeholder="How the change is reversed if it fails">${esc(v.rollback || '')}</textarea>`, true)}
+     <p class="muted full" style="font-size:.82rem">Approvals: Normal goes to the Change Manager, then CAB. Standard goes to the Change Manager only. Emergency goes to ECAB and may proceed before UAT sign-off.</p>`,
+    `<button class="btn primary" type="submit">${f.kind === 'chg-edit' ? 'Save changes' : 'Save as draft'}</button>${CANCEL}`);
+}
+function chgSave(){
+  const b = getBcr(state.bcr), f = state.form;
+  const next = {type:val('chg-type'), risk:val('chg-risk'), release:val('chg-release'), window:val('chg-window'), rollback:val('chg-rollback')};
+  if (!next.release) return formError('Set the planned release date.');
+  if (!next.rollback) return formError('Add the rollback plan.');
+  if (next.type !== 'Emergency' && !uatLocked(b)) return formError('UAT must be signed off before a Normal or Standard change. Use Emergency, approved by ECAB, for an urgent fix.');
+  if (f.kind === 'chg-add'){
+    const itsm = val('chg-itsm');
+    if (itsm && !/^CHG-\d{5}$/.test(itsm)) return formError('Use the ITSM format CHG-00000, or leave it blank.');
+    const id = itsm || 'CHG-' + String(DB.chgCounter++).padStart(5,'0');
+    b.chg = {id, ...next, status:'Draft', cab:'Not Submitted', deploy:'Not Scheduled', pir:'Not Due', approvals:[], author:CHG_AUTHOR, ver:1};
+    log(CHG_AUTHOR, 'Change request created', `${b.id} / ${id}`, `Draft ${next.type} change, ${next.risk} risk, release ${fmtDate(next.release)}`);
+    state.form = null; toast(`${id} saved as draft`); return render();
+  }
+  const c = b.chg, names = {type:'change type', risk:'risk level', release:'release date', window:'window', rollback:'rollback plan'};
+  const changed = Object.keys(next).filter(k => next[k] !== (c[k] || ''));
+  if (!changed.length) return formError('Nothing has changed.');
+  const wasSubmitted = c.status === 'Submitted';
+  Object.assign(c, next); c.ver = (c.ver || 1) + 1;
+  if (wasSubmitted || c.status === 'Rejected'){ Object.assign(c, {status:'Draft', cab:'Not Submitted', approvals:[]}); }
+  log(CHG_AUTHOR, 'Change request edited', `${b.id} / ${c.id}`, `Version ${c.ver}: changed ${changed.map(k => names[k]).join(', ')}${wasSubmitted ? '; returned to Draft, approvals cleared' : ''}`);
+  state.form = null; toast(`${c.id} saved as version ${c.ver}`); render();
+}
+function chgSubmit(){
+  const b = getBcr(state.bcr), c = b.chg; state.notice = null;
+  if (!c.rollback){ state.notice = {where:'chg', ok:false, text:'Add a rollback plan before submitting.'}; return render(); }
+  if (c.type !== 'Emergency' && !uatLocked(b)){ state.notice = {where:'chg', ok:false, text:'UAT must be signed off first, or change the type to Emergency.'}; return render(); }
+  Object.assign(c, {status:'Submitted', cab:'Pending', approvals: chgReviewers(c.type).map(r => ({...r, st:'Pending', note:''}))});
+  log('svc-reqgov (flow F8)', 'Change submitted for approval', `${b.id} / ${c.id}`, `Routed to ${c.approvals.map(a => a.role).join(', then ')}`);
+  toast(`${c.id} submitted`); render();
+}
+function chgReview(decision){
+  const b = getBcr(state.bcr), c = b.chg, ap = c.approvals[Number(state.form.role)], who = val('rv-who'), note = val('rv-note'), trace = `${b.id} / ${c.id}`;
+  if (chgNext(c) !== ap) return formError('An earlier approver must decide first.');
+  if (who === c.author && who !== ap.who) return formError(`Segregation of duties: ${who} raised this change and cannot approve it.`);
+  if (who !== ap.who) return formError(`${ap.role} decides this step (${ap.who}).`);
+  if (decision === 'reject' && !note) return formError('Explain why the change is rejected.');
+  ap.st = decision === 'reject' ? 'Rejected' : 'Approved'; ap.note = note;
+  log(who, `Change ${ap.st.toLowerCase()}`, trace, `${ap.role}${note ? ': ' + note : ''}`);
+  if (ap.st === 'Rejected') Object.assign(c, {status:'Rejected', cab:'Rejected'});
+  else if (!chgNext(c)){ Object.assign(c, {status:'Approved', cab:'Approved', deploy:'Scheduled'}); log('svc-reqgov (flow F8)', 'Change approved', trace, `All approvals complete; scheduled for ${fmtDate(c.release)}`); }
+  state.form = null; toast(`${c.id}: ${ap.role} ${ap.st.toLowerCase()}`); render();
+}
+function chgDeploy(){
+  const b = getBcr(state.bcr), c = b.chg, outcome = val('dp-outcome'), date = val('dp-date'), note = val('dp-note');
+  if (!date) return formError('Set the deployment date.');
+  if (outcome !== 'Deployed' && !note) return formError('Describe what failed and the recovery steps.');
+  c.deploy = outcome; c.deployed = date; if (outcome === 'Deployed') c.pir = 'Due';
+  log(CHG_AUTHOR, `Deployment ${outcome.toLowerCase()}`, `${b.id} / ${c.id}`, `${fmtDate(date)}${note ? ': ' + note : ''}${outcome === 'Deployed' ? '; PIR now due' : ''}`);
+  state.form = null; toast(`${c.id}: ${outcome.toLowerCase()}`); render();
+}
+function chgPir(){
+  const b = getBcr(state.bcr), c = b.chg, outcome = val('pir-outcome'), note = val('pir-note');
+  if (!note) return formError('Record the review findings.');
+  c.pir = 'Completed – ' + outcome; c.pirNote = note;
+  log(PEOPLE.chg, 'PIR completed', `${b.id} / ${c.id}`, `${outcome}: ${note}`);
+  state.form = null; toast(`PIR recorded for ${c.id}`); render();
+}
+
+function doDelete(){
+  const b = getBcr(state.bcr), f = state.form, note = val('del-note');
+  if (!note) return formError('Give a reason for the deletion.');
+  if (f.kind === 'tc-del'){ const br = b.brs.find(r => r.id === f.br); const tc = br.tcs.find(t => t.id === f.tc);
+    br.tcs = br.tcs.filter(t => t !== tc); log(TC_AUTHOR, 'Test case deleted', `${b.id} / ${br.id} / ${tc.id}`, `Moved to recycle bin: ${note}`); toast(`${tc.id} deleted`); }
+  if (f.kind === 'uat-del'){ log(QA_LEAD, 'UAT plan deleted', `${b.id} / ${b.uat.id}`, `Moved to recycle bin: ${note}`); toast(`${b.uat.id} deleted`); b.uat = null; }
+  if (f.kind === 'chg-del'){ log(CHG_AUTHOR, 'Change request deleted', `${b.id} / ${b.chg.id}`, `Moved to recycle bin: ${note}`); toast(`${b.chg.id} deleted`); b.chg = null; }
+  state.form = null; render();
+}
+
 function pendingItems(){
   return DB.bcrs.filter(b => isOpen(b) && b.gate >= 2).flatMap(b => [...b.brs.flatMap(r => [
     ...r.frs.filter(f => PENDING.includes(f.st)).map(f => ({b, r, f, kind:'rfr'})),
-    ...(PENDING.includes(r.status) ? [{b, r, kind:'rbr'}] : [])
-  ]), ...(b.sa && b.sa.status === 'Submitted' ? b.sa.approvals.map((ap, i) => ({b, ap, i, kind:'sa-review'})).filter(x => x.ap.st === 'Pending') : [])]);
+    ...(PENDING.includes(r.status) ? [{b, r, kind:'rbr'}] : []),
+    ...r.tcs.filter(t => t.ds === 'Draft').map(t => ({b, r, t, kind:'tc-review'}))
+  ]), ...(b.sa && b.sa.status === 'Submitted' ? b.sa.approvals.map((ap, i) => ({b, ap, i, kind:'sa-review'})).filter(x => x.ap.st === 'Pending') : []),
+    ...(b.uat && b.uat.status === 'Pending Sign-Off' ? [{b, kind:'uat-review'}] : []),
+    ...(b.chg && b.chg.status === 'Submitted' ? [{b, ap:chgNext(b.chg), i:b.chg.approvals.indexOf(chgNext(b.chg)), kind:'chg-review'}] : [])]);
 }
 function vApprovals(){
   const q = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).sort((a,b) => (isBreach(b)-isBreach(a)) || b.gate - a.gate);
@@ -905,7 +1240,13 @@ function vApprovals(){
   <section style="display:grid;gap:10px"><h2>Requirement and assessment approvals <span class="muted" style="font-weight:400;font-size:.9rem">· ${items.length}</span></h2>
   <p class="muted" style="font-size:.85rem">System Owners approve each FR. Business Owners approve each BR, which unlocks only after all of its FRs are approved. Each solution assessment reviewer approves separately.</p>
   ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Request</th><th>Approver</th><th>State</th><th></th></tr></thead><tbody>
-  ${items.map(it => { if (it.kind === 'sa-review') return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.b.sa.id}</span><b>SA · ${esc(it.b.sa.atype)}, ${esc(it.b.sa.risk)} risk</b></div></td>
+  ${items.map(it => {
+    const row = (trace, label, who, role, st, data) => `<tr><td><div class="cellstack"><span class="trace">${trace}</span><b>${label}</b></div></td><td>${esc(it.b.title)}</td><td>${esc(who)}<br><span class="muted" style="font-size:.8rem">${esc(role)}</span></td><td>${st}</td>
+      <td><button class="btn" type="button" data-act="review" data-id="${it.b.id}" ${data}>Review</button></td></tr>`;
+    if (it.kind === 'tc-review') return row(`${it.b.id} / ${it.r.id} / ${it.t.id}`, `Test · ${esc(it.t.d)}`, QA_LEAD, 'QA Lead · design approval', pill('Draft'), `data-kind="tc-review" data-br="${it.r.id}" data-tc="${it.t.id}"`);
+    if (it.kind === 'uat-review') return row(`${it.b.id} / ${it.b.uat.id}`, 'UAT sign-off', it.b.uat.owner, 'Business Owner', pill('Pending sign-off','warn'), 'data-kind="uat-review"');
+    if (it.kind === 'chg-review') return row(`${it.b.id} / ${it.b.chg.id}`, `Change · ${esc(it.b.chg.type)}, ${esc(it.b.chg.risk)} risk`, it.ap.who, it.ap.role, pill(`Step ${it.i + 1} of ${it.b.chg.approvals.length}`, 'accent'), `data-kind="chg-review" data-role="${it.i}"`);
+    if (it.kind === 'sa-review') return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.b.sa.id}</span><b>SA · ${esc(it.b.sa.atype)}, ${esc(it.b.sa.risk)} risk</b></div></td>
       <td>${esc(it.b.title)}</td><td>${esc(it.ap.who)}<br><span class="muted" style="font-size:.8rem">${esc(it.ap.role)}</span></td><td>${pill('Pending', 'accent')}</td>
       <td><button class="btn" type="button" data-act="review" data-kind="sa-review" data-id="${it.b.id}" data-role="${it.i}">Review</button></td></tr>`;
     const isFr = it.kind === 'rfr'; const pend = isFr ? 0 : it.r.frs.filter(f => !OK_FR.includes(f.st)).length; const ready = isFr || (it.r.frs.length && !pend);
@@ -1001,17 +1342,14 @@ function decide(kind){
   log(who, `Gate ${g.code} approved`, b.id, note || g.name + ' approved');
   if (b.gate === 3) b.brs.forEach(r => { r.status = 'Baselined'; });
   if (b.gate === 5){
-    if (!b.uat) b.uat = {id:'UAT-001', owner:who};
-    Object.assign(b.uat, {result:'Accepted', date:TODAY, status:'Signed Off', owner:who});
     b.brs.forEach(r => r.status = 'Verified');
     if (!b.chg){ const id = 'CHG-' + String(DB.chgCounter++).padStart(5,'0');
-      b.chg = {id, type:'Normal', risk:b.sa?.risk || 'Medium', cab:'Pending', release:addDays(TODAY,14), deploy:'Scheduled', pir:'Not Due'};
-      log('svc-reqgov (flow F8)','Change request created', `${b.id} / ${id}`, 'Routed to CAB as a Normal change'); }
+      b.chg = {id, type:'Normal', risk:b.sa?.risk || 'Medium', release:addDays(TODAY,14), window:'', rollback:'', status:'Draft', cab:'Not Submitted', deploy:'Not Scheduled', pir:'Not Due', approvals:[], author:CHG_AUTHOR, ver:1};
+      log('svc-reqgov (flow F8)','Change request created', `${b.id} / ${id}`, 'Draft Normal change; add the rollback plan and submit to CAB'); }
   }
-  if (b.gate === 6 && b.chg){ Object.assign(b.chg, {cab:'Approved', deploy:'Deployed', pir:'Completed – Successful'});
-    log('svc-reqgov (flow F9)','BCR closed', b.id, 'Deployed, PIR completed, records locked'); }
+  if (b.gate === 6) log('svc-reqgov (flow F9)','BCR closed', b.id, 'Change deployed, PIR completed, records locked');
   b.gate += 1; b.since = TODAY;
-  state.flash = {ok:true, text: b.gate === 7 ? 'CAB approved. The change is deployed and the BCR is closed.' : `${g.code} approved. The request now waits on ${GATES[b.gate].code} ${GATES[b.gate].name}.`};
+  state.flash = {ok:true, text: b.gate === 7 ? 'The change is deployed, the PIR is complete and the BCR is closed.' : `${g.code} approved. The request now waits on ${GATES[b.gate].code} ${GATES[b.gate].name}.`};
   toast(`${b.id}: ${g.code} approved`); render();
 }
 
@@ -1030,6 +1368,7 @@ function submitNew(){
   state.flash = null; toast(`${id} submitted for G1 approval`); go('detail', id);
 }
 
+function scrollToForm(){ try { const el = document.querySelector('.inline-form'); if (el) el.scrollIntoView({block:'start', behavior:'smooth'}); } catch(e){} }
 let tt;
 function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, 2800); }
 
@@ -1046,12 +1385,17 @@ document.addEventListener('click', e => {
   if (a === 'open'){ state.flash = null; go('detail', t.dataset.id); }
   if (a === 'addbr'){ state.form = {kind:'br'}; render(); document.getElementById('br-title')?.focus(); }
   if (a === 'addfr'){ state.form = {kind:'fr', br:t.dataset.br}; render(); const el = document.getElementById('fr-desc'); el?.focus(); el?.scrollIntoView({block:'center'}); }
-  if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr, role:t.dataset.role}; render(); document.getElementById(t.dataset.kind === 'sa-review' ? 'sareview' : 'reviewitem')?.scrollIntoView({block:'start'}); }
+  if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr, tc:t.dataset.tc, role:t.dataset.role}; render(); scrollToForm(); }
   if (a === 'view' || a === 'edit'){ if (state.view !== 'detail' || (t.dataset.id && state.bcr !== t.dataset.id)) go('detail', t.dataset.id);
     state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render();
     document.getElementById(a === 'view' ? 'viewitem' : (t.dataset.kind === 'efr' ? 'editfr' : 'editbr'))?.scrollIntoView({block:'start'}); }
   if (a === 'cancelform'){ state.form = null; render(); }
-  if (a === 'sa'){ state.form = {kind:t.dataset.kind, role:t.dataset.role}; render(); document.getElementById('saform')?.scrollIntoView({block:'center'}); document.getElementById(t.dataset.kind === 'sa-review' ? 'sareview' : 'saedit')?.scrollIntoView({block:'start'}); }
+  if (a === 'sa' || a === 'tc'){ state.notice = null; state.form = {kind:t.dataset.kind, role:t.dataset.role, br:t.dataset.br, tc:t.dataset.tc}; render(); scrollToForm(); }
+  if (a === 'uatstart') uatAction('start');
+  if (a === 'uatrequest') uatAction('request');
+  if (a === 'uatreopen') uatAction('reopen');
+  if (a === 'chgsubmit') chgSubmit();
+  if (a === 'dodelete') doDelete();
   if (a === 'sasubmit') saSubmit();
   if (a === 'sadelete') saDelete();
   if (a === 'reset'){ DB = normalize(clone(SEED)); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
@@ -1064,6 +1408,16 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'addfr') submitFr();
   if (e.target.id === 'editbr' || e.target.id === 'editfr') saveEdit();
   if (e.target.id === 'saedit') saSave();
+  const dec = e.submitter?.dataset.decision || 'approve';
+  if (e.target.id === 'tcedit') tcSave();
+  if (e.target.id === 'tcreview') tcReview(dec);
+  if (e.target.id === 'tcresult') tcResult();
+  if (e.target.id === 'uatedit') uatSave();
+  if (e.target.id === 'uatreview') uatReview(dec);
+  if (e.target.id === 'chgedit') chgSave();
+  if (e.target.id === 'chgreview') chgReview(dec);
+  if (e.target.id === 'chgdeploy') chgDeploy();
+  if (e.target.id === 'chgpir') chgPir();
   if (e.target.id === 'sareview') saReview(e.submitter?.dataset.decision || 'approve');
   if (e.target.id === 'reviewitem') submitReview(e.submitter?.dataset.decision || 'approve');
 });
