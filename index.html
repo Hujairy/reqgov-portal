@@ -224,16 +224,19 @@ const TODAY = '2026-10-11';
 const GATES = [
   {g:0, code:'G0', name:'Submission check', sla:0, who:'Automatic validation (flow F1)'},
   {g:1, code:'G1', name:'BCR approval', sla:5, who:'Business Sponsor, then Demand Manager'},
-  {g:2, code:'G2', name:'BR baseline', sla:5, who:'Business Owner and Lead BA'},
-  {g:3, code:'G3', name:'FR approval', sla:5, who:'System Owners and Lead BA'},
+  {g:2, code:'G2', name:'FR approval', sla:5, who:'System Owner approves each FR; Lead BA confirms'},
+  {g:3, code:'G3', name:'BR approval & baseline', sla:5, who:'Business Owner approves each BR; Lead BA baselines'},
   {g:4, code:'G4', name:'Solution assessment', sla:10, who:'ARB, Information Security, Risk'},
   {g:5, code:'G5', name:'UAT sign-off', sla:3, who:'Business Owner (not a test executor)'},
   {g:6, code:'G6', name:'CAB & release', sla:7, who:'Change Manager and CAB'}
 ];
-const STATUS_AT = {1:'Submitted',2:'Approved · BRs in review',3:'FRs in review',4:'Under ARB review',5:'UAT pending sign-off',6:'Awaiting CAB',7:'Closed'};
+const STATUS_AT = {1:'Submitted',2:'Approved · FRs in review',3:'BRs in review',4:'Under ARB review',5:'UAT pending sign-off',6:'Awaiting CAB',7:'Closed'};
 const PEOPLE = {
   demand:'Noora Abdulla', ba:'Maryam Hasan', sysown:'Yusuf Mahmood', arb:'Ali Radhi', infosec:'Hussain Ali', chg:'Sara Ebrahim', qa:'Omar Saleh'
 };
+const SYSOWN = {'Core Banking':'Yusuf Mahmood','Payments Hub':'Nadia Fardan','Mobile App':'Sayed Jaffar','Internet Banking':'Sayed Jaffar','Data Warehouse':'Mariam Ghuloom','Trade Finance':'Abbas Hilal','AML Platform':'Nadia Fardan','Branch Systems':'Yusuf Mahmood','Card Management':'Abbas Hilal'};
+const OK_FR = ['Approved','Built','Verified'], OK_BR = ['Approved','Baselined','Verified'], PENDING = ['Draft','Change Requested'];
+const stKind = s => OK_FR.includes(s) || OK_BR.includes(s) ? 'good' : s === 'Change Requested' ? 'warn' : s === 'Rejected' ? 'crit' : '';
 const AREAS = ['Retail Banking','Corporate Banking','Digital Channels','Compliance','Cards'];
 const SYSTEMS = ['Core Banking','Payments Hub','Mobile App','Internet Banking','Data Warehouse','Trade Finance','AML Platform','Branch Systems','Card Management'];
 
@@ -372,7 +375,7 @@ function exceptions(){
 /* ---------- navigation ---------- */
 const TABS = [['overview','Overview'],['register','BCR Register'],['approvals','My approvals'],['audit','Audit log'],['framework','Framework']];
 function renderTabs(){
-  const pending = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).length;
+  const pending = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).length + pendingItems().length;
   document.getElementById('tabs').innerHTML = TABS.map(([k,l]) =>
     `<button type="button" data-act="nav" data-view="${k}" ${state.view===k || (state.view==='detail' && k==='register') || (state.view==='new' && k==='register') ? 'aria-current="page"' : ''}>${l}${k==='approvals' ? `<span class="badge">${pending}</span>` : ''}</button>`).join('');
 }
@@ -432,8 +435,9 @@ function vRegister(){
 function criteria(b){
   const g = b.gate, c = [];
   if (g === 1) c.push({ok:b.sponsor !== b.requestor, t:'Sponsor is not the requestor'}, {ok:b.just.length > 20, t:'Business justification provided'});
-  if (g === 2){ c.push({ok:b.brs.length > 0, t:'At least one business requirement'}); b.brs.forEach(r => c.push({ok:!!r.ac, t:`${r.id} has acceptance criteria`})); }
-  if (g === 3) b.brs.forEach(r => c.push({ok:r.frs.length > 0, t:`${r.id} has at least one functional requirement`}));
+  if (g === 2){ c.push({ok:b.brs.length > 0, t:'At least one business requirement'});
+    b.brs.forEach(r => c.push({ok:r.frs.length > 0 && r.frs.every(f => OK_FR.includes(f.st)), t:`${r.id}: ${r.frs.filter(f => OK_FR.includes(f.st)).length} of ${r.frs.length} FRs approved`})); }
+  if (g === 3) b.brs.forEach(r => c.push({ok:OK_BR.includes(r.status), t:`${r.id} approved by its Business Owner`}));
   if (g === 4) c.push({ok:!!b.sa, t:'Solution assessment submitted'}, {ok:b.brs.every(r=>r.frs.length), t:'All BRs decomposed into FRs'});
   if (g === 5){ b.brs.forEach(r => c.push({ok:r.tcs.length > 0, t:`${r.id} has test coverage`}));
     const all = b.brs.flatMap(r=>r.tcs); c.push({ok:all.length && all.every(t=>t.r==='Pass'), t:`All test cases pass (${all.filter(t=>t.r==='Pass').length} of ${all.length})`}); }
@@ -442,7 +446,7 @@ function criteria(b){
 }
 function approverOptions(b){
   const owner = b.brs[0]?.owner || b.sponsor;
-  const map = {1:[b.sponsor, PEOPLE.demand], 2:[owner, PEOPLE.ba], 3:[PEOPLE.sysown, PEOPLE.ba], 4:[PEOPLE.arb, PEOPLE.infosec], 5:[owner], 6:[PEOPLE.chg]};
+  const map = {1:[b.sponsor, PEOPLE.demand], 2:[PEOPLE.ba], 3:[PEOPLE.ba], 4:[PEOPLE.arb, PEOPLE.infosec], 5:[owner], 6:[PEOPLE.chg]};
   const list = [...(map[b.gate]||[])];
   [b.requestor, PEOPLE.qa].forEach(p => { if (!list.includes(p)) list.push(p); });
   return {expected: map[b.gate]||[], list};
@@ -452,17 +456,82 @@ const pad3 = n => String(n).padStart(3,'0');
 const maxNum = ids => ids.reduce((m,id) => Math.max(m, Number(id.split('-')[1]) || 0), 0);
 const nextBr = b => 'BR-' + pad3(maxNum(b.brs.map(r => r.id)) + 1);
 const nextFr = b => 'FR-' + pad3(maxNum(b.brs.flatMap(r => r.frs.map(f => f.id))) + 1);
-const brKind = s => s === 'Baselined' || s === 'Verified' ? 'good' : s === 'Change Requested' ? 'warn' : '';
+const brKind = stKind;
+
+function reviewForm(b){
+  const f = state.form, br = b.brs.find(r => r.id === f.br);
+  const err = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
+  const kv = obj => `<div class="kv full" style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.85rem">${Object.entries(obj).map(([k,v]) => `<span class="muted">${k}</span><span>${v}</span>`).join('')}</div>`;
+  let item, head, body, approver, blockers = [];
+  if (f.kind === 'rfr'){
+    item = br.frs.find(x => x.id === f.fr); approver = SYSOWN[item.sys] || PEOPLE.sysown;
+    head = `Review functional requirement`;
+    body = `<p class="full">${esc(item.d)}</p>${kv({'Parent BR':`${br.id} · ${esc(br.title)}`, 'Impacted system':esc(item.sys), 'Complexity':item.cx, 'Status':pill(item.st, stKind(item.st)), 'Approver':`${esc(approver)} (System Owner)`})}`;
+  } else {
+    item = br; approver = br.owner;
+    blockers = br.frs.filter(x => !OK_FR.includes(x.st));
+    head = `Review business requirement`;
+    body = `<p class="full"><b>${esc(br.title)}</b><br>${esc(br.stmt)}</p>${kv({'Acceptance criteria':esc(br.ac), 'Priority':esc(br.pri), 'Status':pill(br.status, stKind(br.status)), 'Approver':`${esc(approver)} (Business Owner)`,
+      'Functional requirements': br.frs.length ? br.frs.map(x => `<span class="idref">${x.id}</span> ${pill(x.st, stKind(x.st))}`).join(' ') : '<span class="muted">None yet</span>'})}
+      ${blockers.length || !br.frs.length ? `<div class="msg err full">This BR cannot be approved yet. ${br.frs.length ? `Approve ${blockers.map(x => x.id).join(', ')} first.` : 'Add and approve at least one functional requirement first.'}</div>` : ''}`;
+  }
+  const status = f.kind === 'rfr' ? item.st : item.status;
+  const author = item.author || PEOPLE.ba;
+  const opts = [...new Set([approver, author])];
+  const trace = f.kind === 'rfr' ? `${b.id} / ${br.id} / ${item.id}` : `${b.id} / ${br.id}`;
+  const blocked = f.kind === 'rbr' && (blockers.length > 0 || !br.frs.length);
+  const buttons = status === 'Rejected'
+    ? `<button class="btn primary" type="submit" data-decision="resubmit">Revise and resubmit</button>`
+    : `<button class="btn primary" type="submit" data-decision="approve" ${blocked ? 'disabled' : ''}>Approve ${item.id}</button><button class="btn danger" type="submit" data-decision="reject">Reject</button>`;
+  return `<form class="inline-form form-grid" id="reviewitem" novalidate>
+    <div class="full"><div class="label">${head}</div><h3 style="margin-top:2px"><span class="idref">${trace}</span></h3></div>
+    ${body}
+    <div class="field"><label for="rv-who">Decision recorded by</label><select id="rv-who">${opts.map(o => `<option>${esc(o)}</option>`).join('')}</select></div>
+    <div class="field"><label for="rv-note">Comments</label><textarea id="rv-note" placeholder="Required when rejecting"></textarea></div>
+    ${err}<div class="actions full">${buttons}<button class="btn" type="button" data-act="cancelform">Cancel</button></div></form>`;
+}
+
+function submitReview(decision){
+  const b = getBcr(state.bcr), f = state.form, br = b.brs.find(r => r.id === f.br);
+  const isFr = f.kind === 'rfr', item = isFr ? br.frs.find(x => x.id === f.fr) : br;
+  const who = document.getElementById('rv-who').value, note = document.getElementById('rv-note').value.trim();
+  const trace = isFr ? `${b.id} / ${br.id} / ${item.id}` : `${b.id} / ${br.id}`;
+  const approver = isFr ? (SYSOWN[item.sys] || PEOPLE.sysown) : br.owner;
+  const author = item.author || PEOPLE.ba;
+  const label = isFr ? 'FR' : 'BR';
+  const setSt = v => { if (isFr) item.st = v; else item.status = v; };
+  if (decision === 'resubmit'){
+    setSt(isFr ? (b.gate > 2 ? 'Change Requested' : 'Draft') : (b.gate > 3 ? 'Change Requested' : 'Draft'));
+    log(author, `${label} resubmitted`, trace, note || 'Revised after rejection');
+    state.form = null; toast(`${item.id} resubmitted for approval`); return render();
+  }
+  if (who === author && who !== approver) return formError(`Segregation of duties: ${who} wrote this requirement and cannot approve or reject it.`);
+  if (who !== approver) return formError(`${who} is not the approver. ${isFr ? 'The System Owner of ' + item.sys : 'The Business Owner'} (${approver}) decides this ${label}.`);
+  if (decision === 'reject'){
+    if (!note) return formError('Add a comment so the author knows what to change.');
+    setSt('Rejected'); log(who, `${label} rejected`, trace, note);
+    state.form = null; toast(`${item.id} rejected`); return render();
+  }
+  if (!isFr){
+    const pending = br.frs.filter(x => !OK_FR.includes(x.st));
+    if (!br.frs.length) return formError('This BR has no functional requirements. Add and approve at least one first.');
+    if (pending.length){ log('svc-reqgov (flow F3)', 'BR approval blocked', trace, `Pending FRs: ${pending.map(x => x.id).join(', ')}`); return formError(`Approve ${pending.map(x => x.id).join(', ')} before this BR.`); }
+  }
+  setSt(isFr ? 'Approved' : (b.gate > 3 ? 'Baselined' : 'Approved'));
+  log(who, `${label} approved`, trace, note || (isFr ? 'Approved by System Owner' : 'Approved by Business Owner; all FRs approved'));
+  state.form = null; toast(`${item.id} approved`); render();
+}
 
 function reqForm(b){
   const f = state.form; if (!f) return '';
+  if (f.kind === 'rfr' || f.kind === 'rbr') return reviewForm(b);
   const err = '<div class="msg err full" id="form-err" role="alert" hidden></div>';
   const actions = label => `<div class="actions full"><button class="btn primary" type="submit">${label}</button><button class="btn" type="button" data-act="cancelform">Cancel</button></div>`;
   if (f.kind === 'br'){
     const owners = [...new Set([b.sponsor, ...b.brs.map(r => r.owner)])];
     return `<form class="inline-form form-grid" id="addbr" novalidate>
       <div class="full"><div class="label">New business requirement</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${nextBr(b)}</span></h3>
-        ${b.gate > 2 ? '<p class="muted" style="font-size:.85rem;margin-top:4px">Requirements for this BCR are already baselined, so this one opens change control and needs Business Owner re-approval.</p>' : ''}</div>
+        ${b.gate > 3 ? '<p class="muted" style="font-size:.85rem;margin-top:4px">Requirements for this BCR are already baselined, so this one opens change control. It needs its own FRs approved, then Business Owner approval.</p>' : '<p class="muted" style="font-size:.85rem;margin-top:4px">After saving, add its functional requirements. The BR can be approved once all of them are approved.</p>'}</div>
       <div class="field full"><label for="br-title">Requirement title</label><input id="br-title" placeholder="For example: Customer notification on limit change"></div>
       <div class="field full"><label for="br-stmt">Requirement statement</label><textarea id="br-stmt" placeholder="The business needs…"></textarea></div>
       <div class="field full"><label for="br-just">Business justification</label><textarea id="br-just" placeholder="Why this requirement matters"></textarea></div>
@@ -475,7 +544,7 @@ function reqForm(b){
   const systems = [...b.systems, ...SYSTEMS.filter(s => !b.systems.includes(s))];
   return `<form class="inline-form form-grid" id="addfr" novalidate>
     <div class="full"><div class="label">New functional requirement for ${esc(br.id)} · ${esc(br.title)}</div><h3 style="margin-top:2px"><span class="idref">${b.id} / ${br.id} / ${nextFr(b)}</span></h3>
-      ${b.gate > 3 ? '<p class="muted" style="font-size:.85rem;margin-top:4px">Functional requirements are already approved, so this one opens change control and needs System Owner re-approval.</p>' : ''}</div>
+      <p class="muted" style="font-size:.85rem;margin-top:4px">${b.gate > 2 ? 'The FR gate has passed, so this one opens change control. ' : ''}It needs approval from the System Owner of the system you pick.${OK_BR.includes(br.status) ? ` ${br.id} is already approved and will reopen until this FR is approved.` : ''}</p></div>
     <div class="field full"><label for="fr-desc">Functional requirement</label><textarea id="fr-desc" placeholder="The system shall…"></textarea></div>
     <div class="field"><label for="fr-sys">Impacted system</label><select id="fr-sys">${systems.map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
     <div class="field"><label for="fr-cx">Complexity</label><select id="fr-cx">${['Low','Medium','High','Very High'].map(c => `<option ${c==='Medium'?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -488,9 +557,9 @@ function submitBr(){
   const b = getBcr(state.bcr); const v = id => document.getElementById(id).value.trim();
   const missing = [['br-title','title'],['br-stmt','requirement statement'],['br-just','business justification'],['br-ac','acceptance criteria']].filter(([id]) => !v(id)).map(([,n]) => n);
   if (missing.length) return formError(`Add the ${missing.join(', ')}.`);
-  const id = nextBr(b), after = b.gate > 2;
-  b.brs.push({id, title:v('br-title'), stmt:v('br-stmt'), just:v('br-just'), pri:v('br-pri'), owner:v('br-owner'), status: after ? 'Change Requested' : 'Draft', ac:v('br-ac'), frs:[], tcs:[]});
-  log(PEOPLE.ba, 'Business requirement created', `${b.id} / ${id}`, after ? 'Added after baseline; change control opened for Business Owner re-approval' : 'Draft, pending G2 baseline');
+  const id = nextBr(b), after = b.gate > 3;
+  b.brs.push({id, title:v('br-title'), stmt:v('br-stmt'), just:v('br-just'), pri:v('br-pri'), owner:v('br-owner'), status: after ? 'Change Requested' : 'Draft', ac:v('br-ac'), author:PEOPLE.ba, frs:[], tcs:[]});
+  log(PEOPLE.ba, 'Business requirement created', `${b.id} / ${id}`, after ? 'Added after baseline; change control opened' : 'Draft; needs approved FRs, then Business Owner approval');
   state.form = null; toast(`${id} added to ${b.id}`); render();
 }
 
@@ -498,9 +567,10 @@ function submitFr(){
   const b = getBcr(state.bcr); const br = b.brs.find(r => r.id === state.form.br);
   const d = document.getElementById('fr-desc').value.trim();
   if (!d) return formError('Describe the functional requirement.');
-  const id = nextFr(b), after = b.gate > 3;
-  br.frs.push({id, d, sys:document.getElementById('fr-sys').value, cx:document.getElementById('fr-cx').value, st: after ? 'Change Requested' : 'Draft'});
-  log(PEOPLE.ba, 'Functional requirement created', `${b.id} / ${br.id} / ${id}`, after ? 'Added after FR approval; change control opened for System Owner re-approval' : 'Draft, pending G3 approval');
+  const id = nextFr(b), after = b.gate > 2, sys = document.getElementById('fr-sys').value;
+  br.frs.push({id, d, sys, cx:document.getElementById('fr-cx').value, st: after ? 'Change Requested' : 'Draft', author:PEOPLE.ba});
+  log(PEOPLE.ba, 'Functional requirement created', `${b.id} / ${br.id} / ${id}`, `${after ? 'Change control opened' : 'Draft'}; awaiting ${SYSOWN[sys] || PEOPLE.sysown} (System Owner)`);
+  if (OK_BR.includes(br.status)){ br.status = 'Change Requested'; log('svc-reqgov (flow F3)', 'BR reopened', `${b.id} / ${br.id}`, `New FR ${id} is pending; BR needs re-approval after it is approved`); }
   state.form = null; toast(`${id} added under ${br.id}`); render();
 }
 
@@ -531,11 +601,13 @@ function vDetail(){
       </form>`;
 
   const rtm = b.brs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Business requirement</th><th>Functional requirements</th><th>Test cases</th><th>UAT</th><th>Change</th></tr></thead><tbody>
-    ${b.brs.map(r => `<tr><td style="min-width:220px"><div class="cellstack"><span><span class="idref">${r.id}</span> ${pill(r.status, brKind(r.status))}</span><b>${esc(r.title)}</b><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span></div></td>
-      <td style="min-width:200px"><div class="cellstack">${r.frs.map(f => `<span title="${esc(f.d)}"><span class="idref">${f.id}</span> <span class="muted">· ${esc(f.sys)} · ${f.cx}</span>${f.st==='Draft'||f.st==='Change Requested' ? ' ' + pill(f.st, f.st==='Change Requested'?'warn':'') : ''}</span>`).join('') || pill('No FR', b.gate>2?'crit':'')}${canEdit ? `<button class="btn link small" type="button" data-act="addfr" data-br="${r.id}" style="justify-self:start">+ Add FR</button>` : ''}</div></td>
+    ${b.brs.map(r => { const okN = r.frs.filter(f => OK_FR.includes(f.st)).length, brOpen = canEdit && (PENDING.includes(r.status) || r.status === 'Rejected');
+      return `<tr><td style="min-width:230px"><div class="cellstack"><span><span class="idref">${r.id}</span> ${pill(r.status, stKind(r.status))}</span><b>${esc(r.title)}</b><span class="muted" style="font-size:.82rem">${esc(r.stmt)}</span><span class="trace">${b.id} / ${r.id}</span>
+        ${brOpen ? `<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn link small" type="button" data-act="review" data-kind="rbr" data-id="${b.id}" data-br="${r.id}">${r.status === 'Rejected' ? 'Revise' : 'Review BR'}</button><span class="muted" style="font-size:.78rem">${okN} of ${r.frs.length} FRs approved</span></span>` : ''}</div></td>
+      <td style="min-width:240px"><div class="cellstack">${r.frs.map(f => `<span title="${esc(f.d)}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="idref">${f.id}</span><span class="muted" style="font-size:.82rem">${esc(f.sys)} · ${f.cx}</span>${pill(f.st, stKind(f.st))}${canEdit && (PENDING.includes(f.st) || f.st === 'Rejected') ? `<button class="btn link small" type="button" data-act="review" data-kind="rfr" data-id="${b.id}" data-br="${r.id}" data-fr="${f.id}">${f.st === 'Rejected' ? 'Revise' : 'Review'}</button>` : ''}</span>`).join('') || pill('No FR', b.gate>2?'crit':'')}${canEdit ? `<button class="btn link small" type="button" data-act="addfr" data-br="${r.id}" style="justify-self:start">+ Add FR</button>` : ''}</div></td>
       <td style="min-width:150px"><div class="cellstack">${r.tcs.map(t => `<span><span class="idref">${t.id}</span> ${pill(t.r, resKind(t.r))}</span>`).join('') || pill('No test', r.status==='Baselined'?'crit':'')}</div></td>
       <td>${b.uat ? `<span class="idref">${b.uat.id}</span><br>${pill(b.uat.status, b.uat.status==='Signed Off'?'good':'')}` : '<span class="muted">—</span>'}</td>
-      <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`).join('')}
+      <td>${b.chg ? `<span class="idref">${b.chg.id}</span><br>${pill(b.chg.deploy, b.chg.deploy==='Deployed'?'good':'')}` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<p class="empty">${canEdit ? 'No business requirements yet. Add the first one to start the G2 baseline.' : 'No business requirements yet. They are written once the BCR passes G1.'}</p>`;
 
   const kv = obj => `<div class="kv">${Object.entries(obj).map(([k,v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>`;
@@ -572,15 +644,32 @@ function vDetail(){
   </section>`;
 }
 
+function pendingItems(){
+  return DB.bcrs.filter(b => isOpen(b) && b.gate >= 2).flatMap(b => b.brs.flatMap(r => [
+    ...r.frs.filter(f => PENDING.includes(f.st)).map(f => ({b, r, f, kind:'rfr'})),
+    ...(PENDING.includes(r.status) ? [{b, r, kind:'rbr'}] : [])
+  ]));
+}
 function vApprovals(){
   const q = DB.bcrs.filter(b => isOpen(b) && b.gate >= 1).sort((a,b) => (isBreach(b)-isBreach(a)) || b.gate - a.gate);
-  return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Gate decisions waiting on the governance office and approvers. Approvers are resolved from the Approval Matrix list by business area and risk.</p></div></div>
+  const items = pendingItems();
+  return `<div class="pagehead"><div><h1>My approvals</h1><p class="muted">Requirement decisions and gate decisions waiting on approvers. Approvers are resolved from the Approval Matrix list by system, business area and risk.</p></div></div>
+  <section style="display:grid;gap:10px"><h2>Requirement approvals <span class="muted" style="font-weight:400;font-size:.9rem">· ${items.length}</span></h2>
+  <p class="muted" style="font-size:.85rem">System Owners approve each FR. Business Owners approve each BR, which unlocks only after all of its FRs are approved.</p>
+  ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Request</th><th>Approver</th><th>State</th><th></th></tr></thead><tbody>
+  ${items.map(it => { const isFr = it.kind === 'rfr'; const pend = isFr ? 0 : it.r.frs.filter(f => !OK_FR.includes(f.st)).length; const ready = isFr || (it.r.frs.length && !pend);
+    return `<tr><td><div class="cellstack"><span class="trace">${it.b.id} / ${it.r.id}${isFr ? ' / ' + it.f.id : ''}</span><b>${isFr ? 'FR' : 'BR'} · ${esc(isFr ? it.f.d : it.r.title)}</b></div></td>
+    <td>${esc(it.b.title)}</td><td>${esc(isFr ? (SYSOWN[it.f.sys] || PEOPLE.sysown) : it.r.owner)}<br><span class="muted" style="font-size:.8rem">${isFr ? 'System Owner · ' + esc(it.f.sys) : 'Business Owner'}</span></td>
+    <td>${ready ? pill(isFr ? it.f.st : 'Ready to approve', isFr ? stKind(it.f.st) : 'accent') : pill(it.r.frs.length ? `Waiting on ${pend} FR${pend===1?'':'s'}` : 'No FRs yet', 'warn')}</td>
+    <td><button class="btn" type="button" data-act="review" data-kind="${it.kind}" data-id="${it.b.id}" data-br="${it.r.id}" ${isFr ? `data-fr="${it.f.id}"` : ''}>Review</button></td></tr>`; }).join('')}
+  </tbody></table></div>` : '<p class="empty">No requirements are waiting for approval.</p>'}</section>
+  <section style="display:grid;gap:10px"><h2>Gate decisions <span class="muted" style="font-weight:400;font-size:.9rem">· ${q.length}</span></h2>
   <div class="tbl-wrap"><table><thead><tr><th>Gate</th><th>Request</th><th>Approvers</th><th>Waiting</th><th>SLA</th><th></th></tr></thead><tbody>
   ${q.map(b => { const g = GATES[b.gate]; const d = daysAtGate(b);
     return `<tr><td><span class="mono">${g.code}</span><br><b>${g.name}</b></td><td><span class="idref">${b.id}</span><br>${esc(b.title)}</td><td style="max-width:260px">${esc(g.who)}</td>
     <td class="num">${d} working day${d===1?'':'s'}</td><td>${isBreach(b) ? pill(`Breached (${g.sla}d)`, 'crit') : pill(`${g.sla - d} day${g.sla-d===1?'':'s'} left`, 'good')}</td>
     <td><button class="btn" type="button" data-act="open" data-id="${b.id}">Review</button></td></tr>`; }).join('')}
-  </tbody></table></div>`;
+  </tbody></table></div></section>`;
 }
 
 function vAudit(){
@@ -610,6 +699,8 @@ function vFramework(){
   </tbody></table></div></section>
   <section class="panel"><header><h2>Controls in this prototype</h2></header>
     <ul style="margin:0;padding-left:18px;display:grid;gap:6px;max-width:75ch">
+      <li>Each functional requirement is approved on its own by the System Owner of its impacted system.</li>
+      <li>Each business requirement is approved on its own by its Business Owner, and only once all of its FRs are approved. Adding an FR to an approved BR reopens it.</li>
       <li>A gate approves only when its entry criteria pass, as the Power Automate flow would check them.</li>
       <li>Segregation of duties: a requestor cannot approve their own BCR, and a test executor cannot sign UAT.</li>
       <li>Every decision is written to the audit log with the approver, time and comments.</li>
@@ -657,8 +748,7 @@ function decide(kind){
 
   b.returned = false;
   log(who, `Gate ${g.code} approved`, b.id, note || g.name + ' approved');
-  if (b.gate === 2) b.brs.forEach(r => r.status = 'Baselined');
-  if (b.gate === 3) b.brs.forEach(r => r.frs.forEach(f => f.st = 'Approved'));
+  if (b.gate === 3) b.brs.forEach(r => { r.status = 'Baselined'; });
   if (b.gate === 4 && b.sa){ b.sa.status = 'Approved'; b.sa.arch = 'Approved'; b.sa.sec = 'Cleared'; }
   if (b.gate === 5){
     if (!b.uat) b.uat = {id:'UAT-001', owner:who};
@@ -706,6 +796,7 @@ document.addEventListener('click', e => {
   if (a === 'open'){ state.flash = null; go('detail', t.dataset.id); }
   if (a === 'addbr'){ state.form = {kind:'br'}; render(); document.getElementById('br-title')?.focus(); }
   if (a === 'addfr'){ state.form = {kind:'fr', br:t.dataset.br}; render(); const el = document.getElementById('fr-desc'); el?.focus(); el?.scrollIntoView({block:'center'}); }
+  if (a === 'review'){ go('detail', t.dataset.id); state.form = {kind:t.dataset.kind, br:t.dataset.br, fr:t.dataset.fr}; render(); document.getElementById('reviewitem')?.scrollIntoView({block:'start'}); }
   if (a === 'cancelform'){ state.form = null; render(); }
   if (a === 'reset'){ DB = clone(SEED); state = {view:'overview', bcr:null, flash:null, regFilter:{q:'',area:'',pri:''}, auditFilter:''}; render(); toast('Demo data reset'); }
 });
@@ -715,6 +806,7 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'newbcr') submitNew();
   if (e.target.id === 'addbr') submitBr();
   if (e.target.id === 'addfr') submitFr();
+  if (e.target.id === 'reviewitem') submitReview(e.submitter?.dataset.decision || 'approve');
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'f-q'){ state.regFilter.q = e.target.value; const pos = e.target.selectionStart; render(); const el = document.getElementById('f-q'); el.focus(); try{ el.setSelectionRange(pos,pos);}catch(_){} }
