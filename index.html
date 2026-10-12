@@ -1409,7 +1409,7 @@ function adminChange(el){
     DB.sla[g] = n; log(ADMIN_USER, 'SLA changed', 'Admin / Level SLAs', `${gate.code} ${gate.name}: ${from} → ${n} working days`);
     return adminDone(`${gate.code} SLA set to ${n} working days`);
   }
-  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], i = Number(el.dataset.i), x = list.values[i], rec = `Admin / ${list.label}`;
+  const key = state.adminList && DB.lists[state.adminList] ? state.adminList : Object.keys(DB.lists)[0], list = DB.lists[key], i = Number(el.dataset.i), x = list.values[i], rec = `Admin / ${list.label}`;
   if (el.dataset.adm === 'rename'){
     const to = el.value.trim(), from = x.v;
     if (to === from) return;
@@ -1427,8 +1427,8 @@ function adminChange(el){
   if (el.dataset.adm === 'route'){ x.route = el.value; log(ADMIN_USER, 'Approval route changed', rec, `${x.v}: ${ROUTES[x.route]}`); return adminDone(`${x.v} now routes to ${ROUTES[x.route]}`); }
 }
 function adminAction(act, t){
-  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], rec = `Admin / ${list.label}`;
   if (act === 'admlist'){ state.adminList = t.dataset.key; state.adminMsg = null; return render(); }
+  const key = state.adminList && DB.lists[state.adminList] ? state.adminList : Object.keys(DB.lists)[0], list = DB.lists[key], rec = `Admin / ${list.label}`;
   const i = Number(t.dataset.i), x = list.values[i];
   if (act === 'admmove'){ const j = i + Number(t.dataset.d); if (j < 0 || j >= list.values.length) return;
     [list.values[i], list.values[j]] = [list.values[j], list.values[i]]; log(ADMIN_USER, 'List reordered', rec, `${x.v} moved to position ${j + 1}`); state.adminMsg = null; return render(); }
@@ -1440,7 +1440,7 @@ function adminAction(act, t){
   }
 }
 function adminAdd(){
-  const key = state.adminList || Object.keys(DB.lists)[0], list = DB.lists[key], v = val('adm-new');
+  const key = state.adminList && DB.lists[state.adminList] ? state.adminList : Object.keys(DB.lists)[0], list = DB.lists[key], v = val('adm-new');
   if (!v) return adminError('Type the value to add.');
   if (list.values.some(y => y.v.toLowerCase() === v.toLowerCase())) return adminError(`"${v}" is already in this list.`);
   const item = {v};
